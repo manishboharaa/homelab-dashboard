@@ -1,0 +1,22 @@
+{
+  "name": "homelab-dashboard",
+  "version": "1.0.0",
+  "description": "Self-hosted homelab dashboard - services, system stats, weather, RSS, Pi-hole & AdGuard Home stats",
+  "main": "server.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "check-disk-space": "^3.4.0",
+    "express": "^4.19.2",
+    "node-fetch": "^2.7.0",
+    "rss-parser": "^3.13.0",
+    "systeminformation": "^5.22.11",
+    "unixpass": "^1.0.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

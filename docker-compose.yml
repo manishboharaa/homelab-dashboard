@@ -1,0 +1,16 @@
+services:
+  homelab-dashboard:
+    build: .
+    container_name: homelab-dashboard
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PORT=8080
+      - TZ=Europe/Lisbon
+      - HOST_DISK_PATH=/hostfs
+    volumes:
+      - ./data:/app/data
+      - /:/hostfs:ro
+      - /sys/class/thermal:/sys/class/thermal:ro
+      - /proc:/host/proc:ro
+    pid: host

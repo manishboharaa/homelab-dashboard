@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Home Lab</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+
+<div id="wizard" class="wizard hidden">
+  <div class="wizard-panel">
+    <div class="wizard-rail">
+      <div class="rail-step active" data-step="1"><span>01</span>Welcome</div>
+      <div class="rail-step" data-step="2"><span>02</span>Services</div>
+      <div class="rail-step" data-step="3"><span>03</span>Weather</div>
+      <div class="rail-step" data-step="4"><span>04</span>News</div>
+      <div class="rail-step" data-step="5"><span>05</span>DNS</div>
+      <div class="rail-step" data-step="6"><span>06</span>Host</div>
+    </div>
+
+    <div class="wizard-body">
+
+      
+      <section class="wizard-step" data-step="1">
+        <h1>Let's set up your homelab.</h1>
+        <p class="wizard-sub">This runs once. You can change everything later from Settings.</p>
+        <label class="field-label">What should we call you?</label>
+        <input id="setupName" type="text" placeholder="e.g. Alex" class="wizard-input" />
+        <div class="wizard-actions">
+          <button class="btn btn-primary" data-next>Continue</button>
+        </div>
+      </section>
+
+      
+      <section class="wizard-step" data-step="2" hidden>
+        <h1>Add your services.</h1>
+        <p class="wizard-sub">Pick anything you're running. Icons are pulled in automatically.</p>
+        <input id="catalogSearch" type="text" placeholder="Filter services..." class="wizard-input small" />
+        <div id="catalogGrid" class="catalog-grid"></div>
+
+        <div class="custom-add-toggle">
+          <button class="btn btn-ghost" id="showCustomForm">+ Add your own service</button>
+        </div>
+        <div id="customForm" class="custom-form hidden">
+          <input id="customName" type="text" placeholder="Service name" class="wizard-input small" />
+          <input id="customUrl" type="text" placeholder="http://192.168.1.50:8080" class="wizard-input small" />
+          <button class="btn btn-secondary" id="addCustomService">Add</button>
+        </div>
+
+        <h3 class="selected-heading">Selected <span id="selectedCount">(0)</span></h3>
+        <div id="selectedList" class="selected-list"></div>
+
+        <div class="wizard-actions">
+          <button class="btn btn-ghost" data-prev>Back</button>
+          <button class="btn btn-primary" data-next>Continue</button>
+        </div>
+      </section>
+
+      
+      <section class="wizard-step" data-step="3" hidden>
+        <h1>Where are you located?</h1>
+        <p class="wizard-sub">Used for the weather widget. Nothing is shared beyond the forecast lookup.</p>
+        <input id="weatherSearch" type="text" placeholder="Search city..." class="wizard-input" />
+        <div id="weatherResults" class="weather-results"></div>
+        <div id="weatherChosen" class="weather-chosen hidden"></div>
+        <div class="wizard-actions">
+          <button class="btn btn-ghost" data-prev>Back</button>
+          <button class="btn btn-primary" data-next>Continue</button>
+        </div>
+      </section>
+
+      
+      <section class="wizard-step" data-step="4" hidden>
+        <h1>Tech news feed.</h1>
+        <p class="wizard-sub">We've pre-loaded a few solid tech feeds. Edit the list or leave the defaults.</p>
+        <div id="rssList" class="rss-edit-list"></div>
+        <div class="rss-add-row">
+          <input id="rssInput" type="text" placeholder="https://example.com/feed.xml" class="wizard-input small" />
+          <button class="btn btn-secondary" id="addRssBtn">Add feed</button>
+        </div>
+        <div class="wizard-actions">
+          <button class="btn btn-ghost" data-prev>Back</button>
+          <button class="btn btn-primary" data-next>Continue</button>
+        </div>
+      </section>
+
+      
+      <section class="wizard-step" data-step="5" hidden>
+        <h1>Almost there.</h1>
+        <p class="wizard-sub">Running Pi-hole or AdGuard Home? Add it here to show blocking stats on the dashboard. Optional.</p>
+        <label class="checkbox-row">
+          <input type="checkbox" id="piholeEnabled" />
+          <span>I run Pi-hole</span>
+        </label>
+        <div id="piholeFields" class="pihole-fields hidden">
+          <input id="piholeUrl" type="text" placeholder="http://192.168.1.10" class="wizard-input small" />
+          <input id="piholeKey" type="text" placeholder="API key (Settings > API in Pi-hole admin)" class="wizard-input small" />
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="adguardEnabled" />
+          <span>I run AdGuard Home</span>
+        </label>
+        <div id="adguardFields" class="pihole-fields hidden">
+          <input id="adguardUrl" type="text" placeholder="http://192.168.1.10:3000" class="wizard-input small" />
+          <select id="adguardMode" class="wizard-input small">
+            <option value="basic">Standard — AdGuard username &amp; password</option>
+            <option value="glinet">GL.iNet router (Brume 2, Flint…)</option>
+          </select>
+          <input id="adguardUser" type="text" placeholder="Username (e.g. admin)" class="wizard-input small" />
+          <input id="adguardPass" type="password" placeholder="Password" class="wizard-input small" />
+          <p class="wizard-sub" id="adguardModeHint">Standard AdGuard Home: use the username &amp; password from AdGuard's own admin.</p>
+        </div>
+        <div class="wizard-actions">
+          <button class="btn btn-ghost" data-prev>Back</button>
+          <button class="btn btn-primary" data-next>Continue</button>
+        </div>
+      </section>
+
+      
+      <section class="wizard-step" data-step="6" hidden>
+        <h1>Where is this dashboard running?</h1>
+        <p class="wizard-sub">Choose what "system info" should cover. You can change this anytime from Settings.</p>
+
+        <label class="choice-card">
+          <input type="radio" name="hostMode" value="standalone" checked />
+          <div class="choice-card-body">
+            <div class="choice-card-title">Standalone / Docker host (recommended)</div>
+            <div class="choice-card-sub">Stats show the machine this dashboard is installed on (CPU, RAM, disk…). Your other servers and services are still visible — just add them with their IP in the Services step. Works for most setups.</div>
+          </div>
+        </label>
+
+        <label class="choice-card">
+          <input type="radio" name="hostMode" value="proxmox" />
+          <div class="choice-card-body">
+            <div class="choice-card-title">Proxmox host</div>
+            <div class="choice-card-sub">I run Proxmox. Adds a "Proxmox" panel that lists all VMs &amp; LXC containers on your Proxmox server (running/stopped, CPU &amp; RAM) via the Proxmox API. Your host stats still show, plus everything else keeps working.</div>
+          </div>
+        </label>
+
+        <div id="proxmoxWizardFields" class="pihole-fields hidden">
+          <label class="field-label">Proxmox API token</label>
+          <input id="setupProxmoxUrl" type="text" placeholder="https://192.168.1.10:8006" class="wizard-input small" />
+          <input id="setupProxmoxTokenId" type="text" placeholder="Token ID (e.g. user@pam!dashboard)" class="wizard-input small" />
+          <input id="setupProxmoxTokenSecret" type="password" placeholder="API token secret (UUID)" class="wizard-input small" />
+          <p class="wizard-sub">Create it in Proxmox → Datacenter → Permissions → API Tokens with the <b>VM.Auditor</b> (or higher) role. The dashboard only reads.</p>
+        </div>
+
+        <div class="wizard-actions">
+          <button class="btn btn-ghost" data-prev>Back</button>
+          <button class="btn btn-primary" id="finishSetup">Enter dashboard</button>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+
+<div id="dashboard" class="dashboard hidden">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-name">HOME LAB</span>
+    </div>
+    <div class="greeting">
+      <span id="greetingText">Good evening</span><span id="greetingName"></span>
+    </div>
+    <div class="topbar-right">
+      <button class="icon-btn" id="settingsBtn" title="Settings">⚙</button>
+      <div class="clock">
+        <div id="clockTime">--:--:--</div>
+        <div id="clockDate">-- --- ----</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="dash-grid">
+    <div class="dash-main">
+      <section class="stats-strip" id="statsStrip">
+        
+      </section>
+      <div class="stats-extra hidden" id="statsExtra"></div>
+      <button class="stats-toggle hidden" id="statsToggle" type="button">Show all ▾</button>
+
+      <div id="piholeStrip" class="blocker-panel hidden"></div>
+      <div id="adguardStrip" class="blocker-panel hidden"></div>
+      <div id="proxmoxStrip" class="blocker-panel hidden"></div>
+
+      <section class="services-section">
+        <div class="section-head">
+          <h2>Services</h2>
+          <div class="section-head-actions">
+            <span class="section-head-hint">drag to reorder</span>
+            <button class="btn btn-secondary btn-sm" id="addServiceBtn" type="button">+ Add service</button>
+          </div>
+        </div>
+        <div id="servicesGrid" class="services-groups"></div>
+        <div id="emptyState" class="empty-state hidden">
+          <p>No services yet.</p>
+          <button class="btn btn-primary" id="emptyAddBtn">Add a service</button>
+        </div>
+      </section>
+
+      <section class="ports-section">
+        <div class="section-head">
+          <h2>Open Ports</h2>
+          <input id="portsSearch" type="text" placeholder="Filter by port or process..." class="search-input ports-search" />
+        </div>
+        <div class="panel ports-panel">
+          <table class="ports-table">
+            <thead>
+              <tr><th>Port</th><th>Protocol</th><th>Process</th><th>PID</th></tr>
+            </thead>
+            <tbody id="portsTableBody"></tbody>
+          </table>
+          <div id="portsEmpty" class="ports-empty hidden">No listening ports detected, or the container can't see the host network. See README.</div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="sidebar-col">
+      <div class="panel search-panel">
+        <input id="serviceSearch" type="text" placeholder="Search services..." class="search-input" />
+      </div>
+
+      <div class="panel calendar-panel">
+        <div class="calendar-head">
+          <span id="calMonthLabel"></span>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+      </div>
+
+      <div class="panel weather-panel" id="weatherPanel">
+        <div class="panel-title">Weather</div>
+        <div id="weatherBody" class="weather-body">Not configured</div>
+      </div>
+
+      <div class="panel rss-panel">
+        <div class="panel-title">Tech News</div>
+        <div id="rssBody" class="rss-body"></div>
+      </div>
+    </aside>
+  </div>
+
+</div>
+
+
+<div id="settingsModal" class="modal hidden">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <h2>Settings</h2>
+      <button class="icon-btn" id="closeSettings">✕</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="tab-btn active" data-tab="services">Services</button>
+      <button class="tab-btn" data-tab="profile">Profile</button>
+      <button class="tab-btn" data-tab="weather">Weather</button>
+      <button class="tab-btn" data-tab="rss">News Feeds</button>
+      <button class="tab-btn" data-tab="pihole">Pi-hole</button>
+      <button class="tab-btn" data-tab="adguard">AdGuard</button>
+      <button class="tab-btn" data-tab="proxmox">Proxmox</button>
+      <button class="tab-btn" data-tab="system">System Info</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="tab-pane active" data-pane="services">
+        <div id="settingsServicesList" class="settings-services-list"></div>
+        <h3>Add a service</h3>
+        <div class="ss-add-row">
+          <div class="ss-name-wrap">
+            <input id="settingsNewName" type="text" placeholder="Service name" class="wizard-input small" autocomplete="off" />
+            <div id="settingsServiceSuggest" class="ss-suggest hidden"></div>
+          </div>
+          <div id="settingsNewIcon" class="ss-preview hidden"></div>
+        </div>
+        <input id="settingsNewUrl" type="text" placeholder="http://192.168.1.50:8080" class="wizard-input small" />
+        <div class="ss-add-cat-row">
+          <select id="settingsNewCat" class="wizard-input small"></select>
+          <input id="settingsNewCatCustom" type="text" placeholder="New category name" class="wizard-input small hidden" autocomplete="off" />
+          <button class="btn btn-secondary" id="settingsAddService">Add service</button>
+        </div>
+      </div>
+
+      <div class="tab-pane" data-pane="profile">
+        <label class="field-label">Your name</label>
+        <input id="settingsProfileName" type="text" class="wizard-input small" />
+        <button class="btn btn-primary" id="saveProfile">Save</button>
+      </div>
+
+      <div class="tab-pane" data-pane="weather">
+        <label class="field-label">Search location</label>
+        <input id="settingsWeatherSearch" type="text" placeholder="Search city..." class="wizard-input small" />
+        <div id="settingsWeatherResults" class="weather-results"></div>
+        <p id="settingsCurrentLocation" class="wizard-sub"></p>
+      </div>
+
+      <div class="tab-pane" data-pane="rss">
+        <div id="settingsRssList" class="rss-edit-list"></div>
+        <div class="rss-add-row">
+          <input id="settingsRssInput" type="text" placeholder="https://example.com/feed.xml" class="wizard-input small" />
+          <button class="btn btn-secondary" id="settingsAddRss">Add feed</button>
+        </div>
+      </div>
+
+      <div class="tab-pane" data-pane="pihole">
+        <label class="checkbox-row">
+          <input type="checkbox" id="settingsPiholeEnabled" />
+          <span>I run Pi-hole</span>
+        </label>
+        <input id="settingsPiholeUrl" type="text" placeholder="http://192.168.1.10" class="wizard-input small" />
+        <input id="settingsPiholeKey" type="text" placeholder="API key" class="wizard-input small" />
+        <button class="btn btn-primary" id="savePihole">Save</button>
+      </div>
+
+      <div class="tab-pane" data-pane="adguard">
+        <label class="checkbox-row">
+          <input type="checkbox" id="settingsAdguardEnabled" />
+          <span>I run AdGuard Home</span>
+        </label>
+        <input id="settingsAdguardUrl" type="text" placeholder="http://192.168.1.10:3000" class="wizard-input small" />
+        <select id="settingsAdguardMode" class="wizard-input small">
+          <option value="basic">Standard — AdGuard username &amp; password</option>
+          <option value="glinet">GL.iNet router (Brume 2, Flint…)</option>
+        </select>
+        <input id="settingsAdguardUser" type="text" placeholder="Username (e.g. admin)" class="wizard-input small" />
+        <input id="settingsAdguardPass" type="password" placeholder="Password" class="wizard-input small" />
+        <p class="wizard-sub" id="settingsAdguardModeHint">Standard AdGuard Home: use the username &amp; password from AdGuard's own admin.</p>
+        <button class="btn btn-primary" id="saveAdguard">Save</button>
+      </div>
+
+      <div class="tab-pane" data-pane="proxmox">
+        <p class="wizard-sub">Connect a Proxmox server to list all its VMs &amp; LXC containers (running/stopped, CPU &amp; RAM). Create an API token in Proxmox → Datacenter → Permissions → API Tokens with the <b>VM.Auditor</b> (or higher) role — the dashboard only reads.</p>
+        <label class="checkbox-row">
+          <input type="checkbox" id="settingsProxmoxEnabled" />
+          <span>I run Proxmox</span>
+        </label>
+        <input id="settingsProxmoxUrl" type="text" placeholder="https://192.168.1.10:8006" class="wizard-input small" />
+        <input id="settingsProxmoxTokenId" type="text" placeholder="Token ID (e.g. user@pam!dashboard)" class="wizard-input small" />
+        <input id="settingsProxmoxTokenSecret" type="password" placeholder="API token secret (UUID)" class="wizard-input small" />
+        <button class="btn btn-primary" id="saveProxmox">Save</button>
+      </div>
+
+      <div class="tab-pane" data-pane="system">
+        <p class="wizard-sub">Pick up to 6 stats to show on the first row of the system panel. Click "Show all" on the dashboard to see the rest.</p>
+        <div id="settingsStatsList" class="stats-pick-list"></div>
+        <button class="btn btn-primary" id="saveSystem">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/js/catalog.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

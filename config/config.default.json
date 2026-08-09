@@ -1,0 +1,42 @@
+{
+  "setupComplete": false,
+  "profile": {
+    "name": ""
+  },
+  "services": [],
+  "weather": {
+    "locationName": "",
+    "latitude": null,
+    "longitude": null,
+    "unit": "fahrenheit"
+  },
+  "rss": {
+    "feeds": [
+      "https://feeds.arstechnica.com/arstechnica/index",
+      "https://www.theverge.com/rss/index.xml",
+      "https://techcrunch.com/feed/"
+    ]
+  },
+  "pihole": {
+    "enabled": false,
+    "url": "",
+    "apiKey": ""
+  },
+  "adguard": {
+    "enabled": false,
+    "url": "",
+    "username": "",
+    "password": "",
+    "authMode": "basic"
+  },
+  "system": {
+    "primaryDisk": "/hostfs",
+    "pinnedStats": ["cpu", "memory", "swap", "disk", "temp", "load"]
+  },
+  "proxmox": {
+    "enabled": false,
+    "url": "",
+    "tokenId": "",
+    "tokenSecret": ""
+  }
+}
