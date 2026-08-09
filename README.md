@@ -110,9 +110,8 @@ Both ways give you the same files. Continue to [Run it](#run-it).
 
 ## Run it
 
-Choose the method that fits your setup. There are three: run directly with
-Node.js, build with Docker from the source you just got, or pull a prebuilt
-image from GitHub Container Registry.
+Choose the method that fits your setup: run directly with Node.js, or build
+with Docker from the source you just got.
 
 ### Method 1 — run with Node.js (no Docker)
 
@@ -136,42 +135,6 @@ docker compose up -d --build
 
 Then visit **`http://YOUR_SERVER_IP:8080`**. Rebuilding takes a minute or
 two the first time.
-
-### Method 3 — pull a prebuilt image from GHCR
-
-If you don't want to build the image yourself, the repository includes a
-GitHub Actions workflow (`.github/workflows/docker-publish.yml`) that
-builds the image and publishes it to GitHub Container Registry every time
-you push to `main`. To use it on your own copy:
-
-1. Push this repository to your own GitHub account.
-2. The workflow runs automatically on the next push to `main` (or trigger
-   it manually from the **Actions** tab → *Build and publish image* →
-   *Run workflow*). No extra secrets needed — it uses the automatically
-   provided `GITHUB_TOKEN`.
-3. In your repository's GitHub page, go to **Packages** and confirm the
-   image shows up. Open its settings and make sure visibility is set to
-   **Public** (private packages need extra auth on the pulling machine,
-   which is outside the scope of this README).
-4. The included `docker-compose.ghcr.yml` already points at this
-   repository's maintained image.
-
-From then on, deploying to any machine is just:
-
-```bash
-mkdir homelab-dashboard && cd homelab-dashboard
-curl -O https://raw.githubusercontent.com/manishboharaa/homelab-dashboard/main/docker-compose.ghcr.yml
-docker compose -f docker-compose.ghcr.yml up -d
-```
-
-Docker pulls the image straight from `ghcr.io` — the rest of the repo never
-needs to touch that machine. `pull_policy: always` in that file means
-re-running `up -d` after a new push to `main` fetches the latest build.
-
-> If you don't set up GHCR, that's completely fine — Methods 1 and 2 work
-> out of the box with zero configuration. GHCR is only worth the extra
-> step if you're deploying to several machines, or want updates without
-> re-cloning each time.
 
 That's it — no `.env` file to fill in first, no API keys. Everything else
 happens in the browser on first load.
@@ -425,12 +388,6 @@ git pull
 docker compose up -d --build
 ```
 
-**With a GHCR image:**
-```bash
-docker compose -f docker-compose.ghcr.yml pull
-docker compose -f docker-compose.ghcr.yml up -d
-```
-
 **Without Docker:**
 ```bash
 git pull
@@ -527,11 +484,7 @@ dashboard shows "—". The disk/net/uptime lines still work either way.
 
 ```
 homelab-dashboard/
-├── .github/
-│   └── workflows/
-│       └── docker-publish.yml
 ├── docker-compose.yml
-├── docker-compose.ghcr.yml
 ├── Dockerfile
 ├── package.json
 ├── server.js
