@@ -1158,6 +1158,8 @@ const MIN_TILE_COL = 160;
 const GRID_GAP = 14;
 const MAX_TILE_SPAN = 24;
 
+const INFO_TIERS = { meta: 2, counts: 3, extended: 4, chart: 5, libraries: 6 };
+
 function sizeSpan(size) {
   if (size === "sm") return 1;
   if (size === "md") return 2;
@@ -1186,6 +1188,9 @@ function applySpan(tile, svc, n) {
   const cols = gridColsFor(tile);
   tile.dataset.span = span;
   tile.classList.toggle("service-wide", span >= 2);
+  tile.style.setProperty("--tile-span", span);
+  const grid = tile.closest ? tile.closest(".services-grid") : null;
+  if (grid) grid.style.setProperty("--cols", cols);
   tile.style.gridColumn = span >= cols ? "1 / -1" : `span ${span}`;
   renderTileInfo(tile, svc, span);
   return span;
@@ -1196,8 +1201,10 @@ function normalizeTileSpans() {
     const w = grid.clientWidth;
     if (!w) return;
     const cols = Math.max(1, Math.floor((w + GRID_GAP) / (MIN_TILE_COL + GRID_GAP)));
+    grid.style.setProperty("--cols", cols);
     grid.querySelectorAll(".service-tile").forEach((tile) => {
       const span = sizeSpan(tile.dataset.span);
+      tile.style.setProperty("--tile-span", span);
       tile.style.gridColumn = span >= cols ? "1 / -1" : `span ${span}`;
     });
   });
@@ -1273,7 +1280,7 @@ function renderJellyfinInfo(d, span) {
   const cell = (label, value) =>
     `<div class="svc-cell"><div class="svc-cell-value">${value != null ? value : "—"}</div><div class="svc-cell-label">${label}</div></div>`;
 
-  if (n < 3) {
+  if (n < INFO_TIERS.counts) {
     if (!jf.serverName && !jf.version) return `<div class="svc-info-hint">details unavailable</div>`;
     return metaLine;
   }
@@ -1294,7 +1301,7 @@ function renderJellyfinInfo(d, span) {
   let html = `<div class="svc-info-grid">`;
   if (haveCounts) {
     cells.forEach((c) => (html += cell(c.label, c.value)));
-    if (n >= 4) {
+    if (n >= INFO_TIERS.extended) {
       [
         ["Artists", jf.artists],
         ["Albums", jf.albums],
@@ -1308,10 +1315,10 @@ function renderJellyfinInfo(d, span) {
   }
   html += `</div>`;
 
-  if (n >= 5 && jf.recentPlays && Array.isArray(jf.recentPlays.values)) {
+  if (n >= INFO_TIERS.chart && jf.recentPlays && Array.isArray(jf.recentPlays.values)) {
     html += renderRecentPlays(jf.recentPlays);
   }
-  if (n >= 6 && Array.isArray(jf.libraryTotals)) {
+  if (n >= INFO_TIERS.libraries && Array.isArray(jf.libraryTotals)) {
     html += `<div class="svc-libs">${jf.libraryTotals
       .map(
         (l) =>

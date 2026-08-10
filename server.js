@@ -51,12 +51,13 @@ function normalizeUrl(url) {
   return /^https?:\/\//i.test(u) ? u : `http://${u}`;
 }
 
-function normalizeSize(size) {
+function normalizeSize(size, defaultSize = 1) {
+  if (size === undefined || size === null || size === "") return normalizeSize(defaultSize);
   if (size === "sm") return 1;
   if (size === "md") return 2;
   if (size === "lg") return 3;
   const n = parseInt(size, 10);
-  return Number.isFinite(n) ? Math.min(24, Math.max(1, n)) : 1;
+  return Number.isFinite(n) ? Math.min(24, Math.max(1, n)) : normalizeSize(defaultSize);
 }
 
 function cleanService(s) {
@@ -66,7 +67,7 @@ function cleanService(s) {
     url: s.url,
     icon: s.icon || null,
     category: s.category || "Other",
-    size: normalizeSize(s.size),
+    size: normalizeSize(s.size, s.type === "jellyfin" ? 6 : 1),
     docker: s.docker || "",
     type: s.type === "jellyfin" ? "jellyfin" : null,
     details: !!s.details,

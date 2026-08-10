@@ -638,7 +638,15 @@ input { font-family: inherit; }
   font-size: 11.5px;
   letter-spacing: 0.02em;
 }
-.service-info { border-top: 1px solid var(--border-soft); padding-top: 10px; margin-top: 2px; }
+.service-info { border-top: 1px solid var(--border-soft); padding-top: 10px; margin-top: 2px; container-type: inline-size; }
+
+@container (min-width: 560px) {
+  .service-info { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+  .svc-info-grid, .svc-meta, .svc-info-hint { grid-column: 1 / -1; }
+  .svc-chart, .svc-libs { border-top: none; padding-top: 0; margin-top: 0; }
+  .service-info:not(:has(.svc-libs)) .svc-chart { grid-column: 1 / -1; }
+}
+
 .svc-info-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
