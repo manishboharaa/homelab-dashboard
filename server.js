@@ -17,6 +17,10 @@ const HOST_DISK_PATH = process.env.HOST_DISK_PATH || "/hostfs";
 const DATA_DIR = path.join(__dirname, "data");
 const CONFIG_PATH = path.join(DATA_DIR, "config.json");
 const DEFAULT_CONFIG_PATH = path.join(__dirname, "config", "config.default.json");
+const UPTIME_PATH = path.join(DATA_DIR, "service-uptime.json");
+const LOCAL_PROBE_MS = 5 * 60 * 1000;
+const REMOTE_PROBE_MS = 30 * 60 * 1000;
+const PROBE_TIMEOUT = 6000;
 
 const rssParser = new Parser({ timeout: 8000 });
 
@@ -54,7 +58,8 @@ function cleanService(s) {
     url: s.url,
     icon: s.icon || null,
     category: s.category || "Other",
-    size: s.size === "md" || s.size === "lg" ? s.size : "sm"
+    size: s.size === "md" || s.size === "lg" ? s.size : "sm",
+    docker: s.docker || ""
   };
 }
 
@@ -109,7 +114,8 @@ app.post("/api/services", (req, res) => {
     url: req.body.url,
     icon: req.body.icon || null,
     category: req.body.category || "Other",
-    size: req.body.size
+    size: req.body.size,
+    docker: req.body.docker
   });
   cfg.services.push(svc);
   writeConfig(cfg);
@@ -130,6 +136,109 @@ app.delete("/api/services/:id", (req, res) => {
   cfg.services = cfg.services.filter((s) => s.id !== req.params.id);
   writeConfig(cfg);
   res.json({ ok: true });
+});
+
+let serviceUptime = {};
+try {
+  serviceUptime = JSON.parse(fs.readFileSync(UPTIME_PATH, "utf-8")) || {};
+} catch {
+  serviceUptime = {};
+}
+
+function saveUptime() {
+  try {
+    fs.writeFileSync(UPTIME_PATH, JSON.stringify(serviceUptime, null, 2));
+  } catch {}
+}
+
+function isLocalUrl(url) {
+  try {
+    const host = new URL(normalizeUrl(url)).hostname.toLowerCase();
+    if (!host || host === "localhost" || host.endsWith(".local")) return true;
+    if (/^\d/.test(host)) {
+      const parts = host.split(".").map(Number);
+      if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+      return (
+        parts[0] === 10 ||
+        parts[0] === 127 ||
+        (parts[0] === 169 && parts[1] === 254) ||
+        (parts[0] === 192 && parts[1] === 168) ||
+        (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
+      );
+    }
+    return !host.includes(".");
+  } catch {
+    return true;
+  }
+}
+
+const probeAgent = new https.Agent({ rejectUnauthorized: false });
+
+async function probeUrl(url) {
+  const target = normalizeUrl(url);
+  if (!target) return false;
+  const options = { timeout: PROBE_TIMEOUT };
+  if (/^https:/i.test(target)) options.agent = probeAgent;
+  try {
+    const r = await fetch(target, options);
+    return r.ok || r.status < 500;
+  } catch {
+    return false;
+  }
+}
+
+let dockerCache = { at: 0, list: null };
+
+async function getDockerContainers() {
+  if (Date.now() - dockerCache.at < 60000 && dockerCache.list) return dockerCache.list;
+  const containers = await si.dockerContainers(true);
+  dockerCache = { at: Date.now(), list: containers };
+  return containers;
+}
+
+app.get("/api/services/:id/info", async (req, res) => {
+  const cfg = readConfig();
+  const svc = cfg.services.find((s) => s.id === req.params.id);
+  if (!svc) return res.status(404).json({ error: "service not found" });
+  try {
+    const result = { id: svc.id, source: "ping", up: false, uptimeSec: 0, state: null, checkedAt: Date.now() };
+
+    if (svc.docker) {
+      try {
+        const containers = await getDockerContainers();
+        const c = (containers || []).find((x) => x.name === svc.docker);
+        if (c) {
+          result.source = "docker";
+          result.state = c.state;
+          result.up = c.state === "running";
+          result.uptimeSec = c.startedTime ? Math.max(0, Math.floor((Date.now() - c.startedTime) / 1000)) : 0;
+        }
+      } catch {}
+    }
+
+    if (result.source !== "docker") {
+      if (svc.url) {
+        const entry = serviceUptime[svc.url] || (serviceUptime[svc.url] = { firstSeenAt: null, lastProbeAt: 0 });
+        const interval = isLocalUrl(svc.url) ? LOCAL_PROBE_MS : REMOTE_PROBE_MS;
+        if (Date.now() - entry.lastProbeAt >= interval) {
+          entry.lastProbeAt = Date.now();
+          const ok = await probeUrl(svc.url);
+          if (ok) {
+            if (!entry.firstSeenAt) entry.firstSeenAt = Date.now();
+          } else {
+            delete entry.firstSeenAt;
+          }
+          saveUptime();
+        }
+        result.up = !!entry.firstSeenAt;
+        result.uptimeSec = result.up ? Math.max(0, Math.floor((Date.now() - entry.firstSeenAt) / 1000)) : 0;
+      }
+    }
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: "failed to read service info", detail: String(err) });
+  }
 });
 
 

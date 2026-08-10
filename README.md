@@ -76,6 +76,11 @@ No account, no cloud dependency, no API keys required to get started.
 - **Resizable service tiles** — drag the bottom-right corner of any tile to
   switch between **small** (1 column), **medium** (2 columns, shows uptime),
   and **large** (3 columns, full detail panel). Sizes are saved per service.
+- **Per-service uptime** — tiles show uptime in days/hours/minutes. Set a
+  **Docker container name** in Settings and (with the socket mounted, below)
+  a tile shows the container's *real* uptime; otherwise the dashboard
+  observes reachability itself (local probes every 5 min, remote every 30
+  min) and remembers it across restarts.
 - **Dark, sleek UI** — no build step, no framework, just HTML/CSS/JS
   served by a small Express app, so the Docker image stays small and easy
   to hack on.
@@ -241,6 +246,11 @@ volume mount to the `volumes:` block of `docker-compose.yml`:
 This grants the container **read-only** access to your Docker daemon.
 It's off by default since mounting the socket is a real privilege grant —
 only enable it if you're comfortable with that tradeoff.
+
+The same mount powers **per-service uptime**: when you set a service's
+**Docker container name** in Settings, its tile reads the container's real
+uptime. Without the mount (or when the container isn't found), tiles fall back
+to dashboard-observed uptime.
 
 ## DNS blocking stats (Pi-hole or AdGuard Home)
 

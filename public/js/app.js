@@ -298,6 +298,7 @@ function initDashboard() {
   refreshAdguard();
   refreshProxmox();
   refreshPorts();
+  refreshServiceInfo();
 
   setInterval(refreshStats, 5000);
   setInterval(refreshPihole, 30000);
@@ -307,6 +308,7 @@ function initDashboard() {
   setInterval(refreshRss, 15 * 60 * 1000);
   setInterval(refreshPorts, 30000);
   setInterval(refreshAllStatuses, 15000);
+  setInterval(refreshServiceInfo, 15000);
 
   document.getElementById("serviceSearch").addEventListener("input", (e) => {
     const q = e.target.value.toLowerCase();
@@ -1090,13 +1092,57 @@ function makeServiceTile(svc) {
   });
 
   attachResize(tile, svc);
+  renderTileInfo(tile, svc);
   checkStatus(tile.querySelector(".status-dot"), svc.url, document.getElementById(`ping-${svc.id}`));
+  if ((svc.size === "md" || svc.size === "lg") && !serviceInfoCache.has(svc.id)) {
+    fetchServiceInfo(svc).then(() => renderTileInfo(tile, svc));
+  }
   return tile;
+}
+
+const serviceInfoCache = new Map();
+
+async function fetchServiceInfo(svc) {
+  try {
+    const r = await fetch(`/api/services/${svc.id}/info`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    serviceInfoCache.set(svc.id, { data, at: Date.now() });
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function refreshServiceInfo() {
+  document.querySelectorAll(".service-tile.service-md, .service-tile.service-lg").forEach((tile) => {
+    const svc = CONFIG.services.find((s) => s.id === tile.dataset.id);
+    if (!svc) return;
+    const cached = serviceInfoCache.get(svc.id);
+    if (cached && Date.now() - cached.at < 15000) {
+      renderTileInfo(tile, svc);
+      return;
+    }
+    fetchServiceInfo(svc).then(() => renderTileInfo(tile, svc));
+  });
+}
+
+function fmtUp(sec) {
+  if (sec == null) return null;
+  sec = Math.max(0, Math.floor(sec));
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return "just now";
 }
 
 function applyTier(tile, svc, tier) {
   tile.classList.remove("service-sm", "service-md", "service-lg");
   tile.classList.add("service-" + tier);
+  renderTileInfo(tile, svc, tier);
 }
 
 function attachResize(tile, svc) {
@@ -1139,6 +1185,9 @@ function attachResize(tile, svc) {
     tile.classList.remove("resizing");
     if (target === (svc.size || "sm")) return;
     svc.size = target;
+    if (target !== "sm" && !serviceInfoCache.has(svc.id)) {
+      fetchServiceInfo(svc).then(() => renderTileInfo(tile, svc));
+    }
     const res = await fetch(`/api/services/${svc.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -1158,6 +1207,34 @@ function attachResize(tile, svc) {
     e.preventDefault();
     e.stopPropagation();
   });
+}
+
+function renderTileInfo(tile, svc, tier) {
+  const more = tile.querySelector(".service-more");
+  if (!more) return;
+  const t = tier || svc.size || "sm";
+  if (t === "sm") {
+    more.innerHTML = "";
+    return;
+  }
+  const cached = serviceInfoCache.get(svc.id);
+  const d = cached ? cached.data : null;
+  let upLine = `<span class="svc-check">checking…</span>`;
+  if (d) {
+    if (d.up && d.uptimeSec != null) {
+      upLine = `<span class="svc-up">UP ${escapeHtml(fmtUp(d.uptimeSec))}</span>`;
+    } else if (d.source === "docker" && d.state && d.state !== "running") {
+      upLine = `<span class="svc-down">${escapeHtml(d.state)}</span>`;
+    } else {
+      upLine = `<span class="svc-down">down</span>`;
+    }
+  }
+  let html = `<div class="service-uptime">${upLine}</div>`;
+  if (t === "lg" && d) {
+    const src = d.source === "docker" ? `docker · ${d.state || ""}` : "ping";
+    html += `<div class="service-info"><div class="svc-meta">source: ${escapeHtml(src)}</div></div>`;
+  }
+  more.innerHTML = html;
 }
 
 async function persistServiceOrder() {
@@ -1416,6 +1493,15 @@ function makeServiceRow(svc) {
   bottom.appendChild(catField.input);
   bottom.appendChild(saveBtn);
 
+  const dockerInput = document.createElement("input");
+  dockerInput.className = "ss-input ss-docker-input";
+  dockerInput.value = svc.docker || "";
+  dockerInput.placeholder = "Docker container name (optional)";
+  dockerInput.title = "Docker container name — real uptime when it matches and the socket is mounted";
+  const extra = document.createElement("div");
+  extra.className = "ss-row-extra";
+  extra.appendChild(dockerInput);
+  row.appendChild(extra);
   row.appendChild(top);
   row.appendChild(bottom);
 
@@ -1423,7 +1509,8 @@ function makeServiceRow(svc) {
     const updated = {
       name: nameInput.value.trim() || svc.name,
       url: urlInput.value.trim(),
-      category: catField.value() || "Other"
+      category: catField.value() || "Other",
+      docker: dockerInput.value.trim()
     };
     const res = await fetch(`/api/services/${svc.id}`, {
       method: "PUT",
@@ -1443,6 +1530,12 @@ function makeServiceRow(svc) {
     }
   });
   urlInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      doSave();
+    }
+  });
+  dockerInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       doSave();

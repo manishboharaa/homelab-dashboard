@@ -631,6 +631,22 @@ input { font-family: inherit; }
 
 .service-title { min-width: 0; }
 .service-more { min-width: 0; }
+.service-uptime { margin-top: 2px; }
+.service-uptime .svc-up { color: var(--accent); }
+.service-uptime .svc-down { color: var(--danger); }
+.service-uptime .svc-check { color: var(--text-dim); }
+.service-uptime span {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+.service-info { border-top: 1px solid var(--border-soft); padding-top: 10px; margin-top: 2px; }
+.svc-meta {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 8px;
+}
 .resize-handle {
   position: absolute;
   right: 3px;
@@ -808,6 +824,9 @@ input { font-family: inherit; }
 
 .ss-add-cat-row { display: flex; gap: 8px; align-items: center; }
 .ss-add-cat-row .wizard-input { flex: 1; margin-bottom: 0; }
+
+.settings-service-row .ss-row-extra { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.settings-service-row .ss-docker-input { flex: 1; min-width: 180px; }
 
 .ss-add-row { display: flex; align-items: center; gap: 8px; position: relative; }
 .ss-name-wrap { position: relative; flex: 1; }
