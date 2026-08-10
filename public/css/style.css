@@ -598,8 +598,11 @@ input { font-family: inherit; }
   color: var(--text);
   position: relative;
   transition: all 0.15s ease;
-  min-height: 92px;
+  min-height: calc(92px + (var(--rows, 1) - 1) * 132px);
 }
+.service-tile.service-tall .svc-cell-value { font-size: 17px; }
+.service-tile.service-tall .svc-info-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+.service-tile.service-tall .svc-chart-bars { height: 84px; }
 .service-tile.resizing { transform: none; cursor: nwse-resize; transition: none; }
 @media (max-width: 900px) {
   .service-tile.service-wide { grid-column: 1 / -1; }

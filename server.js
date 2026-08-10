@@ -60,6 +60,11 @@ function normalizeSize(size, defaultSize = 1) {
   return Number.isFinite(n) ? Math.min(24, Math.max(1, n)) : normalizeSize(defaultSize);
 }
 
+function normalizeRows(rows) {
+  const n = parseInt(rows, 10);
+  return Number.isFinite(n) ? Math.min(8, Math.max(1, n)) : 1;
+}
+
 function cleanService(s) {
   return {
     id: s.id || crypto.randomUUID(),
@@ -68,6 +73,7 @@ function cleanService(s) {
     icon: s.icon || null,
     category: s.category || "Other",
     size: normalizeSize(s.size, s.type === "jellyfin" ? 6 : 1),
+    rows: normalizeRows(s.rows),
     docker: s.docker || "",
     type: s.type === "jellyfin" ? "jellyfin" : null,
     details: !!s.details,
@@ -127,6 +133,7 @@ app.post("/api/services", (req, res) => {
     icon: req.body.icon || null,
     category: req.body.category || "Other",
     size: req.body.size,
+    rows: req.body.rows,
     docker: req.body.docker,
     type: req.body.type,
     details: req.body.details,
@@ -392,7 +399,9 @@ app.get("/api/services/:id/info", async (req, res) => {
 
     if (svc.type === "jellyfin" && svc.details && svc.url) {
       const span = parseInt(req.query.span, 10) || 1;
-      result.jellyfin = await fetchJellyfinInfo(svc.url, svc.apiKey, span);
+      const rows = parseInt(req.query.rows, 10) || 1;
+      const level = Math.min(6, Math.max(1, span + rows - 1));
+      result.jellyfin = await fetchJellyfinInfo(svc.url, svc.apiKey, level);
     }
     res.json(result);
   } catch (err) {

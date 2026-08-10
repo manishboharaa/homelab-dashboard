@@ -1036,6 +1036,7 @@ function makeServiceTile(svc) {
   tile.draggable = true;
   tile.dataset.id = svc.id;
   tile.dataset.span = sizeSpan(svc.size);
+  tile.dataset.rows = rowCount(svc.rows);
 
   const iconHtml = svc.icon
     ? `<img src="${svc.icon}" onerror="this.outerHTML=letterAvatar('${escapeHtml(svc.name)}')" />`
@@ -1098,8 +1099,8 @@ function makeServiceTile(svc) {
   attachResize(tile, svc);
   renderTileInfo(tile, svc);
   checkStatus(tile.querySelector(".status-dot"), svc.url, document.getElementById(`ping-${svc.id}`));
-  if (sizeSpan(svc.size) >= 2 && !serviceInfoCache.has(svc.id)) {
-    fetchServiceInfo(svc, sizeSpan(svc.size)).then(() => renderTileInfo(tile, svc));
+  if (levelFor(sizeSpan(svc.size), rowCount(svc.rows)) >= 2 && !serviceInfoCache.has(svc.id)) {
+    fetchServiceInfo(svc, sizeSpan(svc.size)).then(() => renderTileInfo(tile, svc, sizeSpan(svc.size)));
   }
   return tile;
 }
@@ -1108,21 +1109,24 @@ const serviceInfoCache = new Map();
 
 async function fetchServiceInfo(svc, span) {
   try {
-    const q = span ? `?span=${span}` : "";
-    const r = await fetch(`/api/services/${svc.id}/info${q}`);
-    if (!r.ok) return null;
-    const data = await r.json();
-    serviceInfoCache.set(svc.id, { data, at: Date.now(), span: span || 1 });
+    const s = span || sizeSpan(svc.size);
+    const r = rowCount(svc.rows);
+    const level = levelFor(s, r);
+    const q = `?span=${s}&rows=${r}`;
+    const res = await fetch(`/api/services/${svc.id}/info${q}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    serviceInfoCache.set(svc.id, { data, at: Date.now(), level });
     return data;
   } catch {
     return null;
   }
 }
 
-function cachedInfo(svc, span) {
+function cachedInfo(svc, level) {
   const c = serviceInfoCache.get(svc.id);
   if (!c) return null;
-  if ((c.span || 1) < (span || 1)) return null;
+  if ((c.level || 1) < (level || 1)) return null;
   if (Date.now() - c.at > 15000) return null;
   return c;
 }
@@ -1130,15 +1134,16 @@ function cachedInfo(svc, span) {
 function refreshServiceInfo() {
   document.querySelectorAll(".service-tile").forEach((tile) => {
     const span = parseInt(tile.dataset.span || "1", 10);
-    if (span < 2) return;
     const svc = CONFIG.services.find((s) => s.id === tile.dataset.id);
     if (!svc) return;
-    const cached = cachedInfo(svc, span);
+    const level = levelFor(span, rowCount(svc.rows));
+    if (level < 2) return;
+    const cached = cachedInfo(svc, level);
     if (cached) {
-      renderTileInfo(tile, svc);
+      renderTileInfo(tile, svc, span);
       return;
     }
-    fetchServiceInfo(svc, span).then(() => renderTileInfo(tile, svc));
+    fetchServiceInfo(svc, span).then(() => renderTileInfo(tile, svc, span));
   });
 }
 
@@ -1157,8 +1162,19 @@ function fmtUp(sec) {
 const MIN_TILE_COL = 160;
 const GRID_GAP = 14;
 const MAX_TILE_SPAN = 24;
+const ROW_UNIT = 132;
+const MAX_TILE_ROWS = 8;
 
 const INFO_TIERS = { meta: 2, counts: 3, extended: 4, chart: 5, libraries: 6 };
+
+function levelFor(span, rows) {
+  return Math.min(6, Math.max(1, span + Math.max(0, rows - 1)));
+}
+
+function rowCount(rows) {
+  const n = parseInt(rows, 10);
+  return Number.isFinite(n) ? Math.min(MAX_TILE_ROWS, Math.max(1, n)) : 1;
+}
 
 function sizeSpan(size) {
   if (size === "sm") return 1;
@@ -1183,6 +1199,15 @@ function tileColWidth(tile) {
   return (w - (cols - 1) * GRID_GAP) / cols;
 }
 
+function applyRows(tile, svc, n) {
+  if (!Number.isFinite(n)) n = rowCount(svc && svc.rows);
+  const rows = Math.min(MAX_TILE_ROWS, Math.max(1, n));
+  tile.dataset.rows = rows;
+  tile.style.setProperty("--rows", rows);
+  tile.classList.toggle("service-tall", rows >= 2);
+  return rows;
+}
+
 function applySpan(tile, svc, n) {
   const span = Math.min(MAX_TILE_SPAN, Math.max(1, n));
   const cols = gridColsFor(tile);
@@ -1205,6 +1230,8 @@ function normalizeTileSpans() {
     grid.querySelectorAll(".service-tile").forEach((tile) => {
       const span = sizeSpan(tile.dataset.span);
       tile.style.setProperty("--tile-span", span);
+      tile.style.setProperty("--rows", tile.dataset.rows || 1);
+      tile.classList.toggle("service-tall", rowCount(tile.dataset.rows) >= 2);
       tile.style.gridColumn = span >= cols ? "1 / -1" : `span ${span}`;
     });
   });
@@ -1215,18 +1242,25 @@ function attachResize(tile, svc) {
   if (!handle) return;
   let dragging = false;
   let startX = 0;
+  let startY = 0;
   let startSpan = 1;
   let span = 1;
+  let startRows = 1;
+  let rows = 1;
 
   handle.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     e.stopPropagation();
     dragging = true;
-    startX = e.clientX;
+    startX = e.clientX || 0;
+    startY = e.clientY || 0;
     startSpan = sizeSpan(svc.size);
+    startRows = rowCount(svc.rows);
     span = startSpan;
+    rows = startRows;
     tile.classList.add("resizing");
     applySpan(tile, svc, span);
+    applyRows(tile, svc, rows);
     handle.setPointerCapture(e.pointerId);
   });
 
@@ -1234,11 +1268,18 @@ function attachResize(tile, svc) {
     if (!dragging) return;
     e.preventDefault();
     const colW = tileColWidth(tile);
-    const delta = Math.round((e.clientX - startX) / colW);
+    const cx = typeof e.clientX === "number" ? e.clientX : startX;
+    const delta = Math.round((cx - startX) / colW);
     const next = Math.min(MAX_TILE_SPAN, Math.max(1, startSpan + delta));
+    const dy = (typeof e.clientY === "number" && typeof startY === "number") ? e.clientY - startY : 0;
+    const nextRows = Math.min(MAX_TILE_ROWS, Math.max(1, startRows + Math.round(dy / ROW_UNIT)));
     if (next !== span) {
       span = next;
       applySpan(tile, svc, span);
+    }
+    if (nextRows !== rows) {
+      rows = nextRows;
+      applyRows(tile, svc, rows);
     }
   });
 
@@ -1246,12 +1287,13 @@ function attachResize(tile, svc) {
     if (!dragging) return;
     dragging = false;
     tile.classList.remove("resizing");
-    if (span === startSpan) return;
+    if (span === startSpan && rows === startRows) return;
     svc.size = span;
+    svc.rows = rows;
     const res = await fetch(`/api/services/${svc.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ size: span })
+      body: JSON.stringify({ size: span, rows })
     });
     if (res.ok) Object.assign(svc, await res.json());
     fetchServiceInfo(svc, span).then(() => renderTileInfo(tile, svc, span));
@@ -1262,6 +1304,7 @@ function attachResize(tile, svc) {
     dragging = false;
     tile.classList.remove("resizing");
     applySpan(tile, svc, sizeSpan(svc.size));
+    applyRows(tile, svc, rowCount(svc.rows));
   });
 
   handle.addEventListener("click", (e) => {
@@ -1343,7 +1386,8 @@ function renderRecentPlays(rp) {
 function renderTileInfo(tile, svc, span) {
   const more = tile.querySelector(".service-more");
   if (!more) return;
-  const n = span || parseInt(tile.dataset.span || "1", 10) || 1;
+  const sp = span || parseInt(tile.dataset.span || "1", 10) || 1;
+  const n = levelFor(sp, rowCount(tile.dataset.rows));
   if (n <= 1) {
     more.innerHTML = "";
     return;
