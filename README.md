@@ -81,6 +81,10 @@ No account, no cloud dependency, no API keys required to get started.
   a tile shows the container's *real* uptime; otherwise the dashboard
   observes reachability itself (local probes every 5 min, remote every 30
   min) and remembers it across restarts.
+- **Jellyfin detail panel** — large Jellyfin tiles show movies, series,
+  episodes, active streams, libraries, users, and server version/OS. An
+  optional API key in Settings unlocks the full counters (public info works
+  without one).
 - **Dark, sleek UI** — no build step, no framework, just HTML/CSS/JS
   served by a small Express app, so the Docker image stays small and easy
   to hack on.

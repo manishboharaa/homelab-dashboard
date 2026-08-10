@@ -1209,6 +1209,35 @@ function attachResize(tile, svc) {
   });
 }
 
+function renderJellyfinInfo(d) {
+  if (!d) return `<div class="svc-info-hint">checking…</div>`;
+  const jf = d.jellyfin || {};
+  const cells = [
+    { label: "Movies", value: jf.movies },
+    { label: "Series", value: jf.series },
+    { label: "Episodes", value: jf.episodes },
+    { label: "Streaming", value: jf.activeSessions },
+    { label: "Libraries", value: jf.libraries },
+    { label: "Users", value: jf.users }
+  ];
+  const haveCounts = cells.some((c) => c.value != null);
+  if (!haveCounts && !jf.serverName && !jf.version) {
+    return `<div class="svc-info-hint">details unavailable</div>`;
+  }
+  let html = `<div class="svc-info-grid">`;
+  if (haveCounts) {
+    cells.forEach((c) => {
+      html += `<div class="svc-cell"><div class="svc-cell-value">${c.value != null ? c.value : "—"}</div><div class="svc-cell-label">${c.label}</div></div>`;
+    });
+  } else {
+    html += `<div class="svc-cell wide"><div class="svc-cell-value">${escapeHtml(jf.serverName || "Jellyfin")}</div><div class="svc-cell-label">server</div></div>`;
+  }
+  const bits = [jf.os, jf.version, jf.arch].filter(Boolean);
+  if (bits.length) html += `<div class="svc-meta">${escapeHtml(bits.join(" · "))}</div>`;
+  html += `</div>`;
+  return html;
+}
+
 function renderTileInfo(tile, svc, tier) {
   const more = tile.querySelector(".service-more");
   if (!more) return;
@@ -1230,7 +1259,9 @@ function renderTileInfo(tile, svc, tier) {
     }
   }
   let html = `<div class="service-uptime">${upLine}</div>`;
-  if (t === "lg" && d) {
+  if (svc.type === "jellyfin" && svc.details && (t === "md" || t === "lg")) {
+    html += `<div class="service-info">${renderJellyfinInfo(d)}</div>`;
+  } else if (t === "lg" && d) {
     const src = d.source === "docker" ? `docker · ${d.state || ""}` : "ping";
     html += `<div class="service-info"><div class="svc-meta">source: ${escapeHtml(src)}</div></div>`;
   }
@@ -1341,6 +1372,7 @@ function openSettings() {
   if (suggestBox) suggestBox.classList.add("hidden");
   renderSettingsIconPreview();
   resetAddCategoryField();
+  updateJellyfinAddMenu();
   renderSettingsServices();
   document.getElementById("settingsProfileName").value = CONFIG.profile?.name || "";
   document.getElementById("settingsCurrentLocation").textContent = CONFIG.weather?.locationName
@@ -1493,15 +1525,41 @@ function makeServiceRow(svc) {
   bottom.appendChild(catField.input);
   bottom.appendChild(saveBtn);
 
-  const dockerInput = document.createElement("input");
-  dockerInput.className = "ss-input ss-docker-input";
-  dockerInput.value = svc.docker || "";
-  dockerInput.placeholder = "Docker container name (optional)";
-  dockerInput.title = "Docker container name — real uptime when it matches and the socket is mounted";
-  const extra = document.createElement("div");
-  extra.className = "ss-row-extra";
-  extra.appendChild(dockerInput);
-  row.appendChild(extra);
+  const isJelly = svc.type === "jellyfin" || String(svc.name || "").trim().toLowerCase() === "jellyfin";
+  let dockerInput = null;
+  let detailsInput = null;
+  let apiKeyInput = null;
+  if (isJelly) {
+    const extra = document.createElement("div");
+    extra.className = "ss-row-extra";
+    dockerInput = document.createElement("input");
+    dockerInput.className = "ss-input ss-docker-input";
+    dockerInput.value = svc.docker || "";
+    dockerInput.placeholder = "Docker container name (optional)";
+    dockerInput.title = "Docker container name — real uptime when it matches and the socket is mounted";
+    extra.appendChild(dockerInput);
+
+    const detWrap = document.createElement("label");
+    detWrap.className = "ss-check-label";
+    detailsInput = document.createElement("input");
+    detailsInput.type = "checkbox";
+    detailsInput.checked = !!svc.details;
+    detWrap.appendChild(detailsInput);
+    detWrap.appendChild(document.createTextNode(" Show extra details"));
+    extra.appendChild(detWrap);
+
+    apiKeyInput = document.createElement("input");
+    apiKeyInput.className = "ss-input ss-api-input";
+    apiKeyInput.value = svc.apiKey || "";
+    apiKeyInput.placeholder = "Jellyfin API key";
+    apiKeyInput.title = "Jellyfin API key — Dashboard → API Keys → Add API Key";
+    extra.appendChild(apiKeyInput);
+
+    const syncKeyField = () => apiKeyInput.classList.toggle("hidden", !detailsInput.checked);
+    detailsInput.addEventListener("change", syncKeyField);
+    syncKeyField();
+    row.appendChild(extra);
+  }
   row.appendChild(top);
   row.appendChild(bottom);
 
@@ -1509,9 +1567,14 @@ function makeServiceRow(svc) {
     const updated = {
       name: nameInput.value.trim() || svc.name,
       url: urlInput.value.trim(),
-      category: catField.value() || "Other",
-      docker: dockerInput.value.trim()
+      category: catField.value() || "Other"
     };
+    if (isJelly) {
+      updated.docker = dockerInput.value.trim();
+      updated.type = "jellyfin";
+      updated.details = detailsInput.checked;
+      updated.apiKey = detailsInput.checked ? apiKeyInput.value.trim() : "";
+    }
     const res = await fetch(`/api/services/${svc.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -1535,7 +1598,13 @@ function makeServiceRow(svc) {
       doSave();
     }
   });
-  dockerInput.addEventListener("keydown", (e) => {
+  dockerInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      doSave();
+    }
+  });
+  apiKeyInput?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       doSave();
@@ -1603,6 +1672,18 @@ function renderSettingsIconPreview() {
   }
 }
 
+function updateJellyfinAddMenu() {
+  const block = document.getElementById("settingsJellyfinAdd");
+  if (!block) return;
+  const name = (document.getElementById("settingsNewName")?.value || "").trim().toLowerCase();
+  const isJf = name === "jellyfin";
+  block.classList.toggle("hidden", !isJf);
+  if (!isJf) return;
+  const apiRow = document.getElementById("settingsJellyfinApiRow");
+  const details = document.getElementById("settingsNewDetails");
+  if (apiRow) apiRow.classList.toggle("hidden", !(details && details.checked));
+}
+
 function setupSettingsServiceSuggest() {
   const input = document.getElementById("settingsNewName");
   const box = document.getElementById("settingsServiceSuggest");
@@ -1616,6 +1697,7 @@ function setupSettingsServiceSuggest() {
     if (hadPick) resetAddCategoryField();
     const q = input.value.trim().toLowerCase();
     box.innerHTML = "";
+    updateJellyfinAddMenu();
     if (!q) {
       box.classList.add("hidden");
       return;
@@ -1641,6 +1723,7 @@ function setupSettingsServiceSuggest() {
         if (catInput) catInput.classList.remove("hidden");
         box.classList.add("hidden");
         renderSettingsIconPreview();
+        updateJellyfinAddMenu();
         const urlInput = document.getElementById("settingsNewUrl");
         if (urlInput && !urlInput.value.trim()) urlInput.placeholder = `http://host:${s.defaultPort}`;
       });
@@ -1693,6 +1776,9 @@ function initSettingsModal() {
     });
   }
 
+  const newDetails = document.getElementById("settingsNewDetails");
+  newDetails?.addEventListener("change", updateJellyfinAddMenu);
+
   document.getElementById("settingsAddService").addEventListener("click", async () => {
     const name = document.getElementById("settingsNewName").value.trim();
     const url = document.getElementById("settingsNewUrl").value.trim();
@@ -1702,6 +1788,9 @@ function initSettingsModal() {
     const usingCustom = catCustom && !catCustom.classList.contains("hidden");
     let icon = settingsPick?.icon || null;
     const category = (usingCustom ? catCustom.value.trim() : catInput?.value.trim()) || "Other";
+    const isJf = name.toLowerCase() === "jellyfin";
+    const details = isJf && !!newDetails?.checked;
+    const apiKey = details ? (document.getElementById("settingsNewApiKey")?.value || "").trim() : "";
     if (!icon) {
       try {
         const r = await fetch(`/api/resolve-icon?name=${encodeURIComponent(name)}&url=${encodeURIComponent(url)}`);
@@ -1711,7 +1800,7 @@ function initSettingsModal() {
     const res = await fetch("/api/services", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, url, icon, category })
+      body: JSON.stringify({ name, url, icon, category, type: isJf ? "jellyfin" : null, details, apiKey })
     });
     const svc = await res.json();
     CONFIG.services.push(svc);
@@ -1720,6 +1809,10 @@ function initSettingsModal() {
     document.getElementById("settingsNewUrl").placeholder = "http://192.168.1.50:8080";
     settingsPick = null;
     resetAddCategoryField();
+    if (newDetails) newDetails.checked = false;
+    const apiKeyInput = document.getElementById("settingsNewApiKey");
+    if (apiKeyInput) apiKeyInput.value = "";
+    updateJellyfinAddMenu();
     const suggestBox = document.getElementById("settingsServiceSuggest");
     if (suggestBox) suggestBox.classList.add("hidden");
     renderSettingsIconPreview();

@@ -286,6 +286,16 @@
           <input id="settingsNewCatCustom" type="text" placeholder="New category name" class="wizard-input small hidden" autocomplete="off" />
           <button class="btn btn-secondary" id="settingsAddService">Add service</button>
         </div>
+        <div id="settingsJellyfinAdd" class="ss-jf-block hidden">
+          <label class="ss-check-label">
+            <input id="settingsNewDetails" type="checkbox" />
+            Show extra details (movies, series, active streams, libraries, users)
+          </label>
+          <div id="settingsJellyfinApiRow" class="ss-jf-api hidden">
+            <input id="settingsNewApiKey" type="password" placeholder="Jellyfin API key" class="wizard-input small" autocomplete="off" />
+            <p class="ss-jf-hint">Get one in Jellyfin &rarr; Dashboard &rarr; API Keys &rarr; Add API Key</p>
+          </div>
+        </div>
       </div>
 
       <div class="tab-pane" data-pane="profile">

@@ -59,7 +59,10 @@ function cleanService(s) {
     icon: s.icon || null,
     category: s.category || "Other",
     size: s.size === "md" || s.size === "lg" ? s.size : "sm",
-    docker: s.docker || ""
+    docker: s.docker || "",
+    type: s.type === "jellyfin" ? "jellyfin" : null,
+    details: !!s.details,
+    apiKey: s.apiKey || ""
   };
 }
 
@@ -115,7 +118,10 @@ app.post("/api/services", (req, res) => {
     icon: req.body.icon || null,
     category: req.body.category || "Other",
     size: req.body.size,
-    docker: req.body.docker
+    docker: req.body.docker,
+    type: req.body.type,
+    details: req.body.details,
+    apiKey: req.body.apiKey
   });
   cfg.services.push(svc);
   writeConfig(cfg);
@@ -196,6 +202,62 @@ async function getDockerContainers() {
   return containers;
 }
 
+const jellyfinAgent = new https.Agent({ rejectUnauthorized: false });
+
+function jellyfinRequest(baseUrl, apiKey, agent) {
+  const o = { timeout: PROBE_TIMEOUT };
+  if (/^https:/i.test(baseUrl)) o.agent = agent;
+  if (apiKey) o.headers = { "X-Emby-Token": apiKey };
+  return o;
+}
+
+async function fetchJellyfinInfo(baseUrl, apiKey) {
+  const base = normalizeUrl(baseUrl).replace(/\/$/, "");
+  if (!base) return {};
+  const out = {};
+  const settled = await Promise.allSettled([
+    fetch(`${base}/System/Info/Public`, jellyfinRequest(base, apiKey, jellyfinAgent)),
+    apiKey
+      ? fetch(`${base}/Items/Counts`, jellyfinRequest(base, apiKey, jellyfinAgent))
+      : Promise.resolve(null),
+    apiKey
+      ? fetch(`${base}/Sessions`, jellyfinRequest(base, apiKey, jellyfinAgent))
+      : Promise.resolve(null),
+    apiKey
+      ? fetch(`${base}/Library/MediaFolders`, jellyfinRequest(base, apiKey, jellyfinAgent))
+      : Promise.resolve(null),
+    apiKey ? fetch(`${base}/Users`, jellyfinRequest(base, apiKey, jellyfinAgent)) : Promise.resolve(null)
+  ]);
+  const [pub, counts, sessions, folders, users] = settled;
+
+  if (pub.status === "fulfilled" && pub.value && pub.value.ok) {
+    const p = await pub.value.json();
+    out.serverName = p.ServerName || null;
+    out.version = p.Version || null;
+    out.os = p.OperatingSystem || null;
+    out.arch = p.SystemArchitecture || null;
+  }
+  if (apiKey && counts.status === "fulfilled" && counts.value && counts.value.ok) {
+    const c = await counts.value.json();
+    out.movies = c.MovieCount != null ? c.MovieCount : null;
+    out.series = c.SeriesCount != null ? c.SeriesCount : null;
+    out.episodes = c.EpisodeCount != null ? c.EpisodeCount : null;
+  }
+  if (apiKey && sessions.status === "fulfilled" && sessions.value && sessions.value.ok) {
+    const s = await sessions.value.json();
+    out.activeSessions = Array.isArray(s) ? s.filter((x) => x && x.NowPlayingItem).length : null;
+  }
+  if (apiKey && folders.status === "fulfilled" && folders.value && folders.value.ok) {
+    const f = await folders.value.json();
+    out.libraries = Array.isArray(f.Items) ? f.Items.length : null;
+  }
+  if (apiKey && users.status === "fulfilled" && users.value && users.value.ok) {
+    const u = await users.value.json();
+    out.users = Array.isArray(u) ? u.length : null;
+  }
+  return out;
+}
+
 app.get("/api/services/:id/info", async (req, res) => {
   const cfg = readConfig();
   const svc = cfg.services.find((s) => s.id === req.params.id);
@@ -235,6 +297,9 @@ app.get("/api/services/:id/info", async (req, res) => {
       }
     }
 
+    if (svc.type === "jellyfin" && svc.details && svc.url) {
+      result.jellyfin = await fetchJellyfinInfo(svc.url, svc.apiKey);
+    }
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: "failed to read service info", detail: String(err) });
