@@ -598,6 +598,13 @@ input { font-family: inherit; }
   color: var(--text);
   position: relative;
   transition: all 0.15s ease;
+  min-height: 92px;
+}
+.service-tile.service-md { grid-column: span 2; }
+.service-tile.service-lg { grid-column: span 3; }
+.service-tile.resizing { transform: none; cursor: nwse-resize; }
+@media (max-width: 900px) {
+  .service-tile.service-md, .service-tile.service-lg { grid-column: 1 / -1; }
 }
 .service-tile:hover {
   border-color: var(--text-dim);
@@ -621,6 +628,33 @@ input { font-family: inherit; }
 .status-dot.online { background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
 .status-dot.offline { background: var(--danger); }
 .service-name { font-size: 14px; font-weight: 600; }
+
+.service-title { min-width: 0; }
+.service-more { min-width: 0; }
+.resize-handle {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  touch-action: none;
+}
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  border-radius: 0 0 3px 0;
+}
+.service-tile:hover .resize-handle,
+.service-tile.resizing .resize-handle { opacity: 1; }
 
 .empty-state {
   border: 1px dashed var(--border);

@@ -73,6 +73,9 @@ No account, no cloud dependency, no API keys required to get started.
   Pi-hole without touching a config file. Every change saves with an
   on-screen **"Saved"** confirmation and the dashboard updates instantly —
   no reload needed.
+- **Resizable service tiles** — drag the bottom-right corner of any tile to
+  switch between **small** (1 column), **medium** (2 columns, shows uptime),
+  and **large** (3 columns, full detail panel). Sizes are saved per service.
 - **Dark, sleek UI** — no build step, no framework, just HTML/CSS/JS
   served by a small Express app, so the Docker image stays small and easy
   to hack on.

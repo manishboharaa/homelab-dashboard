@@ -1026,7 +1026,7 @@ function makeServiceTile(svc) {
   tile.href = svc.url && !/^https?:\/\//i.test(svc.url) ? `http://${svc.url}` : svc.url || "#";
   tile.target = "_blank";
   tile.rel = "noopener";
-  tile.className = "service-tile";
+  tile.className = "service-tile service-" + (svc.size || "sm");
   tile.dataset.name = svc.name.toLowerCase();
   tile.draggable = true;
   tile.dataset.id = svc.id;
@@ -1040,10 +1040,12 @@ function makeServiceTile(svc) {
       ${iconHtml}
       <span class="status-dot" data-url="${svc.url}"></span>
     </div>
-    <div>
+    <div class="service-title">
       <div class="service-name">${escapeHtml(svc.name)}</div>
       <div class="service-ping" id="ping-${svc.id}">checking…</div>
     </div>
+    <div class="service-more"></div>
+    <div class="resize-handle" draggable="false" title="Drag corner to resize"></div>
   `;
 
   tile.addEventListener("dragstart", (e) => {
@@ -1087,8 +1089,75 @@ function makeServiceTile(svc) {
     );
   });
 
+  attachResize(tile, svc);
   checkStatus(tile.querySelector(".status-dot"), svc.url, document.getElementById(`ping-${svc.id}`));
   return tile;
+}
+
+function applyTier(tile, svc, tier) {
+  tile.classList.remove("service-sm", "service-md", "service-lg");
+  tile.classList.add("service-" + tier);
+}
+
+function attachResize(tile, svc) {
+  const handle = tile.querySelector(".resize-handle");
+  if (!handle) return;
+  let dragging = false;
+  let startX = 0;
+  let target = svc.size || "sm";
+
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragging = true;
+    startX = e.clientX;
+    target = svc.size || "sm";
+    tile.classList.add("resizing");
+    handle.setPointerCapture(e.pointerId);
+  });
+
+  handle.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    const dx = e.clientX - startX;
+    const idx = { sm: 0, md: 1, lg: 2 }[target] ?? 0;
+    let next = idx;
+    if (dx > 90) next = 2;
+    else if (dx > 30) next = Math.max(1, idx);
+    else if (dx < -90) next = 0;
+    else if (dx < -30) next = Math.min(1, idx);
+    const tier = ["sm", "md", "lg"][next];
+    if (tier !== target) {
+      target = tier;
+      applyTier(tile, svc, tier);
+    }
+  });
+
+  handle.addEventListener("pointerup", async () => {
+    if (!dragging) return;
+    dragging = false;
+    tile.classList.remove("resizing");
+    if (target === (svc.size || "sm")) return;
+    svc.size = target;
+    const res = await fetch(`/api/services/${svc.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ size: target })
+    });
+    if (res.ok) Object.assign(svc, await res.json());
+  });
+
+  handle.addEventListener("pointercancel", () => {
+    if (!dragging) return;
+    dragging = false;
+    tile.classList.remove("resizing");
+    applyTier(tile, svc, svc.size || "sm");
+  });
+
+  handle.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
 }
 
 async function persistServiceOrder() {

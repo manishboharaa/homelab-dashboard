@@ -47,6 +47,17 @@ function normalizeUrl(url) {
   return /^https?:\/\//i.test(u) ? u : `http://${u}`;
 }
 
+function cleanService(s) {
+  return {
+    id: s.id || crypto.randomUUID(),
+    name: s.name,
+    url: s.url,
+    icon: s.icon || null,
+    category: s.category || "Other",
+    size: s.size === "md" || s.size === "lg" ? s.size : "sm"
+  };
+}
+
 
 
 app.get("/api/config", (req, res) => {
@@ -59,13 +70,7 @@ app.post("/api/setup", (req, res) => {
 
   if (profile) cfg.profile = { ...cfg.profile, ...profile };
   if (Array.isArray(services)) {
-    cfg.services = services.map((s) => ({
-      id: s.id || crypto.randomUUID(),
-      name: s.name,
-      url: s.url,
-      icon: s.icon || null,
-      category: s.category || "Other"
-    }));
+    cfg.services = services.map(cleanService);
   }
   if (weather) cfg.weather = { ...cfg.weather, ...weather };
   if (rss && Array.isArray(rss.feeds)) cfg.rss.feeds = rss.feeds;
@@ -89,13 +94,7 @@ app.put("/api/settings", (req, res) => {
   if (adguard) cfg.adguard = { ...cfg.adguard, ...adguard, url: normalizeUrl(adguard.url) };
   if (system) cfg.system = { ...cfg.system, ...system };
   if (Array.isArray(services)) {
-    cfg.services = services.map((s) => ({
-      id: s.id || crypto.randomUUID(),
-      name: s.name,
-      url: s.url,
-      icon: s.icon || null,
-      category: s.category || "Other"
-    }));
+    cfg.services = services.map(cleanService);
   }
   if (proxmox) cfg.proxmox = { ...cfg.proxmox, ...proxmox, url: normalizeUrl(proxmox.url) };
   writeConfig(cfg);
@@ -104,13 +103,14 @@ app.put("/api/settings", (req, res) => {
 
 app.post("/api/services", (req, res) => {
   const cfg = readConfig();
-  const svc = {
+  const svc = cleanService({
     id: crypto.randomUUID(),
     name: req.body.name,
     url: req.body.url,
     icon: req.body.icon || null,
-    category: req.body.category || "Other"
-  };
+    category: req.body.category || "Other",
+    size: req.body.size
+  });
   cfg.services.push(svc);
   writeConfig(cfg);
   res.json(svc);
@@ -120,7 +120,7 @@ app.put("/api/services/:id", (req, res) => {
   const cfg = readConfig();
   const idx = cfg.services.findIndex((s) => s.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "not found" });
-  cfg.services[idx] = { ...cfg.services[idx], ...req.body, id: req.params.id };
+  cfg.services[idx] = cleanService({ ...cfg.services[idx], ...req.body, id: req.params.id });
   writeConfig(cfg);
   res.json(cfg.services[idx]);
 });
