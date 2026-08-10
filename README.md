@@ -74,14 +74,15 @@ No account, no cloud dependency, no API keys required to get started.
   on-screen **"Saved"** confirmation and the dashboard updates instantly —
   no reload needed.
 - **Resizable service tiles** — drag the bottom-right corner of any tile to
-  switch between **small** (1 column), **medium** (2 columns, shows uptime),
-  and **large** (3 columns, full detail panel). Sizes are saved per service.
+  resize it freely to any width (1 column up to the full row); the more
+  space a tile has, the more info it shows: uptime from 2 columns, detail
+  panels from 3. Sizes are saved per service.
 - **Per-service uptime** — tiles show uptime in days/hours/minutes. Set a
   **Docker container name** in Settings and (with the socket mounted, below)
   a tile shows the container's *real* uptime; otherwise the dashboard
   observes reachability itself (local probes every 5 min, remote every 30
   min) and remembers it across restarts.
-- **Jellyfin detail panel** — large Jellyfin tiles show movies, series,
+- **Jellyfin detail panel** — wide Jellyfin tiles show movies, series,
   episodes, active streams, libraries, users, and server version/OS. An
   optional API key in Settings unlocks the full counters (public info works
   without one).

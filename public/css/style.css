@@ -600,11 +600,9 @@ input { font-family: inherit; }
   transition: all 0.15s ease;
   min-height: 92px;
 }
-.service-tile.service-md { grid-column: span 2; }
-.service-tile.service-lg { grid-column: span 3; }
-.service-tile.resizing { transform: none; cursor: nwse-resize; }
+.service-tile.resizing { transform: none; cursor: nwse-resize; transition: none; }
 @media (max-width: 900px) {
-  .service-tile.service-md, .service-tile.service-lg { grid-column: 1 / -1; }
+  .service-tile.service-wide { grid-column: 1 / -1; }
 }
 .service-tile:hover {
   border-color: var(--text-dim);

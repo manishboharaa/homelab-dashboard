@@ -310,6 +310,8 @@ function initDashboard() {
   setInterval(refreshAllStatuses, 15000);
   setInterval(refreshServiceInfo, 15000);
 
+  window.addEventListener("resize", normalizeTileSpans);
+
   document.getElementById("serviceSearch").addEventListener("input", (e) => {
     const q = e.target.value.toLowerCase();
     document.querySelectorAll(".service-tile").forEach((tile) => {
@@ -1006,6 +1008,7 @@ function renderServices() {
 
     grid.appendChild(group);
   });
+  normalizeTileSpans();
 }
 
 function moveServiceToCategory(id, cat) {
@@ -1028,10 +1031,11 @@ function makeServiceTile(svc) {
   tile.href = svc.url && !/^https?:\/\//i.test(svc.url) ? `http://${svc.url}` : svc.url || "#";
   tile.target = "_blank";
   tile.rel = "noopener";
-  tile.className = "service-tile service-" + (svc.size || "sm");
+  tile.className = "service-tile";
   tile.dataset.name = svc.name.toLowerCase();
   tile.draggable = true;
   tile.dataset.id = svc.id;
+  tile.dataset.span = sizeSpan(svc.size);
 
   const iconHtml = svc.icon
     ? `<img src="${svc.icon}" onerror="this.outerHTML=letterAvatar('${escapeHtml(svc.name)}')" />`
@@ -1094,7 +1098,7 @@ function makeServiceTile(svc) {
   attachResize(tile, svc);
   renderTileInfo(tile, svc);
   checkStatus(tile.querySelector(".status-dot"), svc.url, document.getElementById(`ping-${svc.id}`));
-  if ((svc.size === "md" || svc.size === "lg") && !serviceInfoCache.has(svc.id)) {
+  if (sizeSpan(svc.size) >= 2 && !serviceInfoCache.has(svc.id)) {
     fetchServiceInfo(svc).then(() => renderTileInfo(tile, svc));
   }
   return tile;
@@ -1115,7 +1119,8 @@ async function fetchServiceInfo(svc) {
 }
 
 function refreshServiceInfo() {
-  document.querySelectorAll(".service-tile.service-md, .service-tile.service-lg").forEach((tile) => {
+  document.querySelectorAll(".service-tile").forEach((tile) => {
+    if (parseInt(tile.dataset.span || "1", 10) < 2) return;
     const svc = CONFIG.services.find((s) => s.id === tile.dataset.id);
     if (!svc) return;
     const cached = serviceInfoCache.get(svc.id);
@@ -1139,10 +1144,53 @@ function fmtUp(sec) {
   return "just now";
 }
 
-function applyTier(tile, svc, tier) {
-  tile.classList.remove("service-sm", "service-md", "service-lg");
-  tile.classList.add("service-" + tier);
-  renderTileInfo(tile, svc, tier);
+const MIN_TILE_COL = 160;
+const GRID_GAP = 14;
+const MAX_TILE_SPAN = 24;
+
+function sizeSpan(size) {
+  if (size === "sm") return 1;
+  if (size === "md") return 2;
+  if (size === "lg") return 3;
+  const n = parseInt(size, 10);
+  return Number.isFinite(n) ? Math.min(MAX_TILE_SPAN, Math.max(1, n)) : 1;
+}
+
+function gridColsFor(tile) {
+  const grid = tile.closest ? tile.closest(".services-grid") : null;
+  const w = grid && grid.clientWidth ? grid.clientWidth : 0;
+  if (!w) return 4;
+  return Math.max(1, Math.floor((w + GRID_GAP) / (MIN_TILE_COL + GRID_GAP)));
+}
+
+function tileColWidth(tile) {
+  const grid = tile.closest ? tile.closest(".services-grid") : null;
+  const w = grid && grid.clientWidth ? grid.clientWidth : 0;
+  const cols = gridColsFor(tile);
+  if (!w) return MIN_TILE_COL;
+  return (w - (cols - 1) * GRID_GAP) / cols;
+}
+
+function applySpan(tile, svc, n) {
+  const span = Math.min(MAX_TILE_SPAN, Math.max(1, n));
+  const cols = gridColsFor(tile);
+  tile.dataset.span = span;
+  tile.classList.toggle("service-wide", span >= 2);
+  tile.style.gridColumn = span >= cols ? "1 / -1" : `span ${span}`;
+  renderTileInfo(tile, svc, span);
+  return span;
+}
+
+function normalizeTileSpans() {
+  document.querySelectorAll(".services-grid").forEach((grid) => {
+    const w = grid.clientWidth;
+    if (!w) return;
+    const cols = Math.max(1, Math.floor((w + GRID_GAP) / (MIN_TILE_COL + GRID_GAP)));
+    grid.querySelectorAll(".service-tile").forEach((tile) => {
+      const span = sizeSpan(tile.dataset.span);
+      tile.style.gridColumn = span >= cols ? "1 / -1" : `span ${span}`;
+    });
+  });
 }
 
 function attachResize(tile, svc) {
@@ -1150,32 +1198,30 @@ function attachResize(tile, svc) {
   if (!handle) return;
   let dragging = false;
   let startX = 0;
-  let target = svc.size || "sm";
+  let startSpan = 1;
+  let span = 1;
 
   handle.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     e.stopPropagation();
     dragging = true;
     startX = e.clientX;
-    target = svc.size || "sm";
+    startSpan = sizeSpan(svc.size);
+    span = startSpan;
     tile.classList.add("resizing");
+    applySpan(tile, svc, span);
     handle.setPointerCapture(e.pointerId);
   });
 
   handle.addEventListener("pointermove", (e) => {
     if (!dragging) return;
     e.preventDefault();
-    const dx = e.clientX - startX;
-    const idx = { sm: 0, md: 1, lg: 2 }[target] ?? 0;
-    let next = idx;
-    if (dx > 90) next = 2;
-    else if (dx > 30) next = Math.max(1, idx);
-    else if (dx < -90) next = 0;
-    else if (dx < -30) next = Math.min(1, idx);
-    const tier = ["sm", "md", "lg"][next];
-    if (tier !== target) {
-      target = tier;
-      applyTier(tile, svc, tier);
+    const colW = tileColWidth(tile);
+    const delta = Math.round((e.clientX - startX) / colW);
+    const next = Math.min(MAX_TILE_SPAN, Math.max(1, startSpan + delta));
+    if (next !== span) {
+      span = next;
+      applySpan(tile, svc, span);
     }
   });
 
@@ -1183,15 +1229,15 @@ function attachResize(tile, svc) {
     if (!dragging) return;
     dragging = false;
     tile.classList.remove("resizing");
-    if (target === (svc.size || "sm")) return;
-    svc.size = target;
-    if (target !== "sm" && !serviceInfoCache.has(svc.id)) {
-      fetchServiceInfo(svc).then(() => renderTileInfo(tile, svc));
+    if (span === startSpan) return;
+    svc.size = span;
+    if (span >= 2 && !serviceInfoCache.has(svc.id)) {
+      fetchServiceInfo(svc).then(() => renderTileInfo(tile, svc, span));
     }
     const res = await fetch(`/api/services/${svc.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ size: target })
+      body: JSON.stringify({ size: span })
     });
     if (res.ok) Object.assign(svc, await res.json());
   });
@@ -1200,7 +1246,7 @@ function attachResize(tile, svc) {
     if (!dragging) return;
     dragging = false;
     tile.classList.remove("resizing");
-    applyTier(tile, svc, svc.size || "sm");
+    applySpan(tile, svc, sizeSpan(svc.size));
   });
 
   handle.addEventListener("click", (e) => {
@@ -1238,11 +1284,11 @@ function renderJellyfinInfo(d) {
   return html;
 }
 
-function renderTileInfo(tile, svc, tier) {
+function renderTileInfo(tile, svc, span) {
   const more = tile.querySelector(".service-more");
   if (!more) return;
-  const t = tier || svc.size || "sm";
-  if (t === "sm") {
+  const n = span || parseInt(tile.dataset.span || "1", 10) || 1;
+  if (n <= 1) {
     more.innerHTML = "";
     return;
   }
@@ -1259,9 +1305,9 @@ function renderTileInfo(tile, svc, tier) {
     }
   }
   let html = `<div class="service-uptime">${upLine}</div>`;
-  if (svc.type === "jellyfin" && svc.details && (t === "md" || t === "lg")) {
+  if (svc.type === "jellyfin" && svc.details) {
     html += `<div class="service-info">${renderJellyfinInfo(d)}</div>`;
-  } else if (t === "lg" && d) {
+  } else if (n >= 3 && d) {
     const src = d.source === "docker" ? `docker · ${d.state || ""}` : "ping";
     html += `<div class="service-info"><div class="svc-meta">source: ${escapeHtml(src)}</div></div>`;
   }
