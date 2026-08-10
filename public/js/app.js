@@ -1099,36 +1099,46 @@ function makeServiceTile(svc) {
   renderTileInfo(tile, svc);
   checkStatus(tile.querySelector(".status-dot"), svc.url, document.getElementById(`ping-${svc.id}`));
   if (sizeSpan(svc.size) >= 2 && !serviceInfoCache.has(svc.id)) {
-    fetchServiceInfo(svc).then(() => renderTileInfo(tile, svc));
+    fetchServiceInfo(svc, sizeSpan(svc.size)).then(() => renderTileInfo(tile, svc));
   }
   return tile;
 }
 
 const serviceInfoCache = new Map();
 
-async function fetchServiceInfo(svc) {
+async function fetchServiceInfo(svc, span) {
   try {
-    const r = await fetch(`/api/services/${svc.id}/info`);
+    const q = span ? `?span=${span}` : "";
+    const r = await fetch(`/api/services/${svc.id}/info${q}`);
     if (!r.ok) return null;
     const data = await r.json();
-    serviceInfoCache.set(svc.id, { data, at: Date.now() });
+    serviceInfoCache.set(svc.id, { data, at: Date.now(), span: span || 1 });
     return data;
   } catch {
     return null;
   }
 }
 
+function cachedInfo(svc, span) {
+  const c = serviceInfoCache.get(svc.id);
+  if (!c) return null;
+  if ((c.span || 1) < (span || 1)) return null;
+  if (Date.now() - c.at > 15000) return null;
+  return c;
+}
+
 function refreshServiceInfo() {
   document.querySelectorAll(".service-tile").forEach((tile) => {
-    if (parseInt(tile.dataset.span || "1", 10) < 2) return;
+    const span = parseInt(tile.dataset.span || "1", 10);
+    if (span < 2) return;
     const svc = CONFIG.services.find((s) => s.id === tile.dataset.id);
     if (!svc) return;
-    const cached = serviceInfoCache.get(svc.id);
-    if (cached && Date.now() - cached.at < 15000) {
+    const cached = cachedInfo(svc, span);
+    if (cached) {
       renderTileInfo(tile, svc);
       return;
     }
-    fetchServiceInfo(svc).then(() => renderTileInfo(tile, svc));
+    fetchServiceInfo(svc, span).then(() => renderTileInfo(tile, svc));
   });
 }
 
@@ -1231,15 +1241,13 @@ function attachResize(tile, svc) {
     tile.classList.remove("resizing");
     if (span === startSpan) return;
     svc.size = span;
-    if (span >= 2 && !serviceInfoCache.has(svc.id)) {
-      fetchServiceInfo(svc).then(() => renderTileInfo(tile, svc, span));
-    }
     const res = await fetch(`/api/services/${svc.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ size: span })
     });
     if (res.ok) Object.assign(svc, await res.json());
+    fetchServiceInfo(svc, span).then(() => renderTileInfo(tile, svc, span));
   });
 
   handle.addEventListener("pointercancel", () => {
@@ -1255,9 +1263,21 @@ function attachResize(tile, svc) {
   });
 }
 
-function renderJellyfinInfo(d) {
+function renderJellyfinInfo(d, span) {
   if (!d) return `<div class="svc-info-hint">checking…</div>`;
   const jf = d.jellyfin || {};
+  const n = span || 3;
+  const bits = [jf.os, jf.version, jf.arch].filter(Boolean);
+  const name = jf.serverName || "Jellyfin";
+  const metaLine = bits.length ? `<div class="svc-meta">${escapeHtml(name)} · ${escapeHtml(bits.join(" · "))}</div>` : "";
+  const cell = (label, value) =>
+    `<div class="svc-cell"><div class="svc-cell-value">${value != null ? value : "—"}</div><div class="svc-cell-label">${label}</div></div>`;
+
+  if (n < 3) {
+    if (!jf.serverName && !jf.version) return `<div class="svc-info-hint">details unavailable</div>`;
+    return metaLine;
+  }
+
   const cells = [
     { label: "Movies", value: jf.movies },
     { label: "Series", value: jf.series },
@@ -1270,18 +1290,47 @@ function renderJellyfinInfo(d) {
   if (!haveCounts && !jf.serverName && !jf.version) {
     return `<div class="svc-info-hint">details unavailable</div>`;
   }
+
   let html = `<div class="svc-info-grid">`;
   if (haveCounts) {
-    cells.forEach((c) => {
-      html += `<div class="svc-cell"><div class="svc-cell-value">${c.value != null ? c.value : "—"}</div><div class="svc-cell-label">${c.label}</div></div>`;
-    });
+    cells.forEach((c) => (html += cell(c.label, c.value)));
+    if (n >= 4) {
+      [
+        ["Artists", jf.artists],
+        ["Albums", jf.albums],
+        ["Songs", jf.songs],
+        ["Genres", jf.genres],
+        ["Collections", jf.collections]
+      ].forEach(([label, value]) => (html += cell(label, value)));
+    }
   } else {
-    html += `<div class="svc-cell wide"><div class="svc-cell-value">${escapeHtml(jf.serverName || "Jellyfin")}</div><div class="svc-cell-label">server</div></div>`;
+    html += `<div class="svc-cell wide"><div class="svc-cell-value">${escapeHtml(name)}</div><div class="svc-cell-label">server</div></div>`;
   }
-  const bits = [jf.os, jf.version, jf.arch].filter(Boolean);
-  if (bits.length) html += `<div class="svc-meta">${escapeHtml(bits.join(" · "))}</div>`;
   html += `</div>`;
+
+  if (n >= 5 && jf.recentPlays && Array.isArray(jf.recentPlays.values)) {
+    html += renderRecentPlays(jf.recentPlays);
+  }
+  if (n >= 6 && Array.isArray(jf.libraryTotals)) {
+    html += `<div class="svc-libs">${jf.libraryTotals
+      .map(
+        (l) =>
+          `<div class="svc-lib"><span class="svc-lib-name">${escapeHtml(l.name || "")}</span><span class="svc-lib-count">${l.count != null ? l.count : "—"}</span></div>`
+      )
+      .join("")}</div>`;
+  }
+  html += metaLine;
   return html;
+}
+
+function renderRecentPlays(rp) {
+  const { labels = [], values = [], max = 1 } = rp;
+  let bars = "";
+  values.forEach((v, i) => {
+    const h = max ? Math.max(3, Math.round((v / max) * 46)) : 3;
+    bars += `<div class="svc-bar" title="${escapeHtml((labels[i] || "") + ": " + v)}"><div class="svc-bar-fill" style="height:${h}px"></div><div class="svc-bar-label">${escapeHtml(labels[i] || "")}</div></div>`;
+  });
+  return `<div class="svc-chart"><div class="svc-chart-title">plays · last 14 days</div><div class="svc-chart-bars">${bars}</div></div>`;
 }
 
 function renderTileInfo(tile, svc, span) {
@@ -1306,7 +1355,7 @@ function renderTileInfo(tile, svc, span) {
   }
   let html = `<div class="service-uptime">${upLine}</div>`;
   if (svc.type === "jellyfin" && svc.details) {
-    html += `<div class="service-info">${renderJellyfinInfo(d)}</div>`;
+    html += `<div class="service-info">${renderJellyfinInfo(d, n)}</div>`;
   } else if (n >= 3 && d) {
     const src = d.source === "docker" ? `docker · ${d.state || ""}` : "ping";
     html += `<div class="service-info"><div class="svc-meta">source: ${escapeHtml(src)}</div></div>`;

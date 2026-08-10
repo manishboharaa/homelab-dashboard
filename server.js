@@ -219,9 +219,39 @@ function jellyfinRequest(baseUrl, apiKey, agent) {
   return o;
 }
 
-async function fetchJellyfinInfo(baseUrl, apiKey) {
+function bucketRecentPlays(items, days = 14) {
+  const now = new Date();
+  const keys = [];
+  const counts = {};
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - i);
+    const k = d.toDateString();
+    keys.push(k);
+    counts[k] = 0;
+  }
+  (items || []).forEach((it) => {
+    if (!it || !it.DatePlayed) return;
+    const d = new Date(it.DatePlayed);
+    if (isNaN(d)) return;
+    const k = d.toDateString();
+    if (k in counts) counts[k]++;
+  });
+  return {
+    days,
+    labels: keys.map((k) => k.slice(4, 10)),
+    values: keys.map((k) => counts[k]),
+    max: Math.max(1, ...keys.map((k) => counts[k]))
+  };
+}
+
+async function fetchJellyfinInfo(baseUrl, apiKey, span) {
   const base = normalizeUrl(baseUrl).replace(/\/$/, "");
   if (!base) return {};
+  const wantGenres = span >= 4;
+  const wantPlays = span >= 5;
+  const wantLibs = span >= 6;
   const out = {};
   const settled = await Promise.allSettled([
     fetch(`${base}/System/Info/Public`, jellyfinRequest(base, apiKey, jellyfinAgent)),
@@ -234,9 +264,15 @@ async function fetchJellyfinInfo(baseUrl, apiKey) {
     apiKey
       ? fetch(`${base}/Library/MediaFolders`, jellyfinRequest(base, apiKey, jellyfinAgent))
       : Promise.resolve(null),
-    apiKey ? fetch(`${base}/Users`, jellyfinRequest(base, apiKey, jellyfinAgent)) : Promise.resolve(null)
+    apiKey ? fetch(`${base}/Users`, jellyfinRequest(base, apiKey, jellyfinAgent)) : Promise.resolve(null),
+    apiKey && wantGenres
+      ? fetch(`${base}/Genres?Limit=1`, jellyfinRequest(base, apiKey, jellyfinAgent))
+      : Promise.resolve(null),
+    apiKey && wantGenres
+      ? fetch(`${base}/Items?IncludeItemTypes=BoxSet&Limit=1&Recursive=true`, jellyfinRequest(base, apiKey, jellyfinAgent))
+      : Promise.resolve(null)
   ]);
-  const [pub, counts, sessions, folders, users] = settled;
+  const [pub, counts, sessions, folders, users, genres, boxes] = settled;
 
   if (pub.status === "fulfilled" && pub.value && pub.value.ok) {
     const p = await pub.value.json();
@@ -250,18 +286,66 @@ async function fetchJellyfinInfo(baseUrl, apiKey) {
     out.movies = c.MovieCount != null ? c.MovieCount : null;
     out.series = c.SeriesCount != null ? c.SeriesCount : null;
     out.episodes = c.EpisodeCount != null ? c.EpisodeCount : null;
+    out.artists = c.ArtistCount != null ? c.ArtistCount : null;
+    out.albums = c.AlbumCount != null ? c.AlbumCount : null;
+    out.songs = c.SongCount != null ? c.SongCount : null;
   }
   if (apiKey && sessions.status === "fulfilled" && sessions.value && sessions.value.ok) {
     const s = await sessions.value.json();
     out.activeSessions = Array.isArray(s) ? s.filter((x) => x && x.NowPlayingItem).length : null;
   }
-  if (apiKey && folders.status === "fulfilled" && folders.value && folders.value.ok) {
-    const f = await folders.value.json();
-    out.libraries = Array.isArray(f.Items) ? f.Items.length : null;
+  if (apiKey && wantGenres && genres.status === "fulfilled" && genres.value && genres.value.ok) {
+    const g = await genres.value.json();
+    out.genres = g.TotalRecordCount != null ? g.TotalRecordCount : null;
   }
+  if (apiKey && wantGenres && boxes.status === "fulfilled" && boxes.value && boxes.value.ok) {
+    const b = await boxes.value.json();
+    out.collections = b.TotalRecordCount != null ? b.TotalRecordCount : null;
+  }
+  let userId = null;
   if (apiKey && users.status === "fulfilled" && users.value && users.value.ok) {
     const u = await users.value.json();
     out.users = Array.isArray(u) ? u.length : null;
+    if (Array.isArray(u) && u.length && u[0].Id) userId = u[0].Id;
+  }
+  let folderItems = [];
+  if (apiKey && folders.status === "fulfilled" && folders.value && folders.value.ok) {
+    const f = await folders.value.json();
+    out.libraries = Array.isArray(f.Items) ? f.Items.length : null;
+    if (Array.isArray(f.Items)) folderItems = f.Items;
+  }
+
+  if (apiKey && wantLibs && folderItems.length) {
+    const libs = folderItems.slice(0, 8).filter((x) => x && x.Id);
+    const tot = await Promise.allSettled(
+      libs.map((x) =>
+        fetch(`${base}/Items?ParentId=${encodeURIComponent(x.Id)}&Recursive=true&Limit=1`, jellyfinRequest(base, apiKey, jellyfinAgent))
+      )
+    );
+    out.libraryTotals = [];
+    for (let i = 0; i < libs.length; i++) {
+      const r = tot[i];
+      if (r.status !== "fulfilled" || !r.value || !r.value.ok) continue;
+      try {
+        const d = await r.value.json();
+        out.libraryTotals.push({
+          name: libs[i].Name || null,
+          type: libs[i].CollectionType || null,
+          count: d.TotalRecordCount != null ? d.TotalRecordCount : null
+        });
+      } catch {}
+    }
+  }
+
+  if (apiKey && wantPlays && userId) {
+    const rec = await fetch(
+      `${base}/Users/${encodeURIComponent(userId)}/Items?Limit=50&SortBy=DatePlayed&SortOrder=Descending&Filters=IsPlayed&Recursive=true&IncludeItemTypes=Movie,Episode&Fields=DatePlayed`,
+      jellyfinRequest(base, apiKey, jellyfinAgent)
+    ).catch(() => null);
+    if (rec && rec.ok) {
+      const data = await rec.json().catch(() => null);
+      if (data && Array.isArray(data.Items)) out.recentPlays = bucketRecentPlays(data.Items);
+    }
   }
   return out;
 }
@@ -306,7 +390,8 @@ app.get("/api/services/:id/info", async (req, res) => {
     }
 
     if (svc.type === "jellyfin" && svc.details && svc.url) {
-      result.jellyfin = await fetchJellyfinInfo(svc.url, svc.apiKey);
+      const span = parseInt(req.query.span, 10) || 1;
+      result.jellyfin = await fetchJellyfinInfo(svc.url, svc.apiKey, span);
     }
     res.json(result);
   } catch (err) {
