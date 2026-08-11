@@ -1107,10 +1107,10 @@ function makeServiceTile(svc) {
 
 const serviceInfoCache = new Map();
 
-async function fetchServiceInfo(svc, span) {
+async function fetchServiceInfo(svc, span, rows) {
   try {
     const s = span || sizeSpan(svc.size);
-    const r = rowCount(svc.rows);
+    const r = rows != null ? rows : rowCount(svc.rows);
     const level = levelFor(s, r);
     const q = `?span=${s}&rows=${r}`;
     const res = await fetch(`/api/services/${svc.id}/info${q}`);
@@ -1247,6 +1247,17 @@ function attachResize(tile, svc) {
   let span = 1;
   let startRows = 1;
   let rows = 1;
+  let lastPreviewFetch = 0;
+
+  function queueInfoFetch() {
+    const now = Date.now();
+    if (now - lastPreviewFetch < 200) return;
+    lastPreviewFetch = now;
+    const level = levelFor(span, rows);
+    const cached = serviceInfoCache.get(svc.id);
+    if (cached && (cached.level || 1) >= level) return;
+    fetchServiceInfo(svc, span, rows).then(() => renderTileInfo(tile, svc, span));
+  }
 
   handle.addEventListener("pointerdown", (e) => {
     e.preventDefault();
@@ -1273,14 +1284,19 @@ function attachResize(tile, svc) {
     const next = Math.min(MAX_TILE_SPAN, Math.max(1, startSpan + delta));
     const dy = (typeof e.clientY === "number" && typeof startY === "number") ? e.clientY - startY : 0;
     const nextRows = Math.min(MAX_TILE_ROWS, Math.max(1, startRows + Math.round(dy / ROW_UNIT)));
-    if (next !== span) {
-      span = next;
-      applySpan(tile, svc, span);
-    }
+    let rowsChanged = false;
     if (nextRows !== rows) {
       rows = nextRows;
       applyRows(tile, svc, rows);
+      rowsChanged = true;
     }
+    if (next !== span) {
+      span = next;
+      applySpan(tile, svc, span);
+    } else if (rowsChanged) {
+      renderTileInfo(tile, svc, span);
+    }
+    queueInfoFetch();
   });
 
   handle.addEventListener("pointerup", async () => {
@@ -1296,7 +1312,7 @@ function attachResize(tile, svc) {
       body: JSON.stringify({ size: span, rows })
     });
     if (res.ok) Object.assign(svc, await res.json());
-    fetchServiceInfo(svc, span).then(() => renderTileInfo(tile, svc, span));
+    fetchServiceInfo(svc, span, rows).then(() => renderTileInfo(tile, svc, span));
   });
 
   handle.addEventListener("pointercancel", () => {
@@ -1407,9 +1423,16 @@ function renderTileInfo(tile, svc, span) {
   let html = `<div class="service-uptime">${upLine}</div>`;
   if (svc.type === "jellyfin" && svc.details) {
     html += `<div class="service-info">${renderJellyfinInfo(d, n)}</div>`;
-  } else if (n >= 3 && d) {
+  } else if (n >= INFO_TIERS.meta && d) {
     const src = d.source === "docker" ? `docker · ${d.state || ""}` : "ping";
-    html += `<div class="service-info"><div class="svc-meta">source: ${escapeHtml(src)}</div></div>`;
+    let meta = `source: ${escapeHtml(src)}`;
+    const t = d.checkedAt ? new Date(d.checkedAt) : null;
+    const checked = t && !isNaN(t) ? t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+    meta += `<br>checked: ${escapeHtml(checked)}`;
+    if (n >= INFO_TIERS.counts) {
+      meta += `<br>${escapeHtml(String(svc.url || ""))}`;
+    }
+    html += `<div class="service-info"><div class="svc-meta">${meta}</div></div>`;
   }
   more.innerHTML = html;
 }
