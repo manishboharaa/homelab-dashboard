@@ -1044,13 +1044,13 @@ function makeServiceTile(svc) {
 
   tile.innerHTML = `
     <div class="service-tile-top">
-      ${iconHtml}
+      <div class="service-title">
+        ${iconHtml}
+        <span class="service-name">${escapeHtml(svc.name)}</span>
+      </div>
       <span class="status-dot" data-url="${svc.url}"></span>
     </div>
-    <div class="service-title">
-      <div class="service-name">${escapeHtml(svc.name)}</div>
-      <div class="service-ping" id="ping-${svc.id}">checking…</div>
-    </div>
+    <div class="service-ping" id="ping-${svc.id}">checking…</div>
     <div class="service-more"></div>
     <div class="resize-handle" draggable="false" title="Drag corner to resize"></div>
   `;
@@ -1407,12 +1407,10 @@ function renderTileInfo(tile, svc, span) {
   if (!more) return;
   const sp = span || parseInt(tile.dataset.span || "1", 10) || 1;
   const n = levelFor(sp, rowCount(tile.dataset.rows));
-  if (n <= 1) {
-    more.innerHTML = "";
-    return;
-  }
   const cached = serviceInfoCache.get(svc.id);
   const d = cached ? cached.data : null;
+
+  let html = "";
   let upLine = `<span class="svc-check">checking…</span>`;
   if (d) {
     if (d.up && d.uptimeSec != null) {
@@ -1423,24 +1421,10 @@ function renderTileInfo(tile, svc, span) {
       upLine = `<span class="svc-down">down</span>`;
     }
   }
-  let html = `<div class="service-uptime">${upLine}</div>`;
-  if (svc.type === "jellyfin" && svc.details) {
+  html += `<div class="service-uptime">${upLine}</div>`;
+
+  if (n >= INFO_TIERS.counts && svc.type === "jellyfin" && svc.details && svc.apiKey) {
     html += `<div class="service-info">${renderJellyfinInfo(d, n)}</div>`;
-  } else if (n >= INFO_TIERS.meta && d) {
-    const src = d.source === "docker" ? `docker · ${d.state || ""}` : "ping";
-    const t = d.checkedAt ? new Date(d.checkedAt) : null;
-    const checked = t && !isNaN(t) ? t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
-    const status = d.up ? "UP" : d.source === "docker" && d.state && d.state !== "running" ? String(d.state) : "down";
-    let grid = `<div class="svc-info-grid">`;
-    grid += svcCell("Status", status);
-    grid += svcCell("Uptime", d.up && d.uptimeSec != null ? fmtUp(d.uptimeSec) : "—");
-    grid += svcCell("Source", src);
-    grid += svcCell("Checked", checked);
-    if (n >= INFO_TIERS.counts && svc.url) {
-      grid += `<div class="svc-cell wide"><div class="svc-cell-value">${escapeHtml(String(svc.url))}</div><div class="svc-cell-label">URL</div></div>`;
-    }
-    grid += `</div>`;
-    html += `<div class="service-info">${grid}</div>`;
   }
   more.innerHTML = html;
 }

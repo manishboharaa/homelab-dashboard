@@ -59,13 +59,13 @@ assert(moreLg.innerHTML.includes("10.9.11"), "jellyfin version in meta");
 applySpan(tileLg, jf, 1);
 eq(tileLg.dataset.span, "1", "applySpan sets span 1");
 assert(!tileLg.classList.contains("service-wide"), "span 1 removes service-wide");
-assert(moreLg.innerHTML === "", "span 1 clears info");
+assert(!moreLg.innerHTML.includes("service-info"), "span 1 clears expanded info");
 
 applySpan(tileLg, jf, 2);
 eq(tileLg.dataset.span, "2", "applySpan sets span 2");
 assert(tileLg.classList.contains("service-wide"), "span 2 adds service-wide");
 assert(moreLg.innerHTML.includes("3d 4h 42m"), "span 2 shows uptime");
-assert(moreLg.innerHTML.includes("Media-Server"), "span 2 shows server name meta");
+assert(!moreLg.innerHTML.includes("Media-Server"), "span 2 hides server meta below counts level");
 assert(!moreLg.innerHTML.includes("412"), "span 2 hides counts grid");
 
 applySpan(tileLg, jf, 4);
@@ -157,32 +157,33 @@ serviceInfoCache.set(jfPublic.id, {
 const tileJp = makeServiceTile(jfPublic);
 applySpan(tileJp, jfPublic, 3);
 const jpMore = tileJp.querySelector(".service-more").innerHTML;
-assert(jpMore.includes("Media-Server"), "jellyfin no-key shows server name");
+assert(!jpMore.includes("service-info"), "jellyfin no-key hides expanded info entirely");
+assert(!jpMore.includes("Media-Server"), "jellyfin no-key hides server meta");
 assert(!jpMore.includes("Movies"), "jellyfin no-key hides counts");
 
 serviceInfoCache.set("p1", { data: { source: "ping", up: true, uptimeSec: 42 * 60, checkedAt: Date.parse("2026-08-11T10:30:00Z") }, at: Date.now() });
 const tileP = makeServiceTile(CONFIG.services[1]);
 applySpan(tileP, CONFIG.services[1], 2);
-eq(tileP.querySelector(".service-more").innerHTML.includes("42m"), true, "generic span 2 shows uptime");
-assert(tileP.querySelector(".service-more").innerHTML.includes(">ping<"), "generic span 2 shows source cell in small expand");
-assert(tileP.querySelector(".service-more").innerHTML.includes(">Checked<"), "generic span 2 shows checked cell in small expand");
+eq(tileP.querySelector(".service-more").innerHTML.includes("42m"), true, "generic span 2 shows uptime line");
+assert(!tileP.querySelector(".service-more").innerHTML.includes("service-info"), "generic tiles show no expanded info without API");
 
 applySpan(tileP, CONFIG.services[1], 3);
-assert(tileP.querySelector(".service-more").innerHTML.includes("http://10.10.8.50:32400"), "generic span 3 shows url");
+assert(tileP.querySelector(".service-more").innerHTML.includes("service-uptime"), "generic span 3 shows uptime line");
 
 applyRows(tileP, CONFIG.services[1], 2);
 applySpan(tileP, CONFIG.services[1], 3);
-eq(tileP.querySelector(".service-more").innerHTML.includes(">Checked<"), true, "generic span3 rows2 (level 4) still shows checked");
-assert(/\d{1,2}:\d{2}/.test(tileP.querySelector(".service-more").innerHTML), "generic checked shows a HH:MM time");
+const pMoreL4 = tileP.querySelector(".service-more").innerHTML;
+assert(!pMoreL4.includes(">Checked<"), "generic level 4 shows no checked cell");
+assert(!pMoreL4.includes("service-info"), "generic level 4 shows no expanded info");
 
 applyRows(tileP, CONFIG.services[1], 3);
 applySpan(tileP, CONFIG.services[1], 3);
-eq(tileP.querySelector(".service-more").innerHTML.includes("http://10.10.8.50:32400"), true, "generic span3 rows3 (level 5) shows url");
+assert(tileP.querySelector(".service-more").innerHTML.includes("service-uptime"), "generic span3 rows3 (level 5) shows uptime line");
 applyRows(tileP, CONFIG.services[1], 1);
 applySpan(tileP, CONFIG.services[1], 3);
 
 const tileSm = makeServiceTile(CONFIG.services[1]);
-eq(tileSm.querySelector(".service-more").innerHTML, "", "default span 1 tile has no info");
+assert(!tileSm.querySelector(".service-more").innerHTML.includes("service-info"), "default span 1 tile has no expanded info");
 
 const resizeFetchBefore = fetchCalls.length;
 const handle = tileSm.querySelector(".resize-handle");
@@ -277,14 +278,14 @@ globalThis.__async = (async () => {
   serviceInfoCache.set(g2.id, { data: { source: "docker", up: false, uptimeSec: 0, state: "running", checkedAt: Date.parse("2026-08-11T11:05:00Z") }, at: Date.now(), level: 4 });
   const tileG = makeServiceTile(g2);
   const moreG = tileG.querySelector(".service-more");
-  eq(moreG.innerHTML, "", "vertical preview: span1 rows1 shows no info");
+  assert(moreG.innerHTML.includes("service-uptime"), "span1 rows1 shows uptime line");
   const hg = tileG.querySelector(".resize-handle");
   hg.dispatch("pointerdown", { clientX: 100, clientY: 100, preventDefault() {}, stopPropagation() {}, pointerId: 11 });
   hg.dispatch("pointermove", { clientX: 100, clientY: 364, preventDefault() {}, stopPropagation() {} });
   eq(tileG.dataset.rows, "3", "vertical preview drag rows → 3");
   eq(tileG.dataset.span, "1", "vertical preview keeps span 1");
-  assert(moreG.innerHTML.includes("docker · running"), "vertical-only drag re-renders: source shown mid-drag");
-  assert(moreG.innerHTML.includes(">Checked<"), "vertical-only drag re-renders: checked shown mid-drag");
+  assert(moreG.innerHTML.includes("service-uptime"), "vertical-only drag re-renders: uptime line shown mid-drag");
+  assert(!moreG.innerHTML.includes("service-info"), "vertical-only drag re-renders: no expanded info for generic");
   hg.dispatch("pointerup", { preventDefault() {}, stopPropagation() {} });
 })();
 

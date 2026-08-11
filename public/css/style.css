@@ -590,16 +590,16 @@ input { font-family: inherit; }
   background: var(--panel);
   border: 1px solid var(--border);
   border-left: 3px solid var(--border);
-  border-radius: 4px;
-  padding: 16px;
+  border-radius: 2px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 5px;
   text-decoration: none;
   color: var(--text);
   position: relative;
   transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
-  min-height: calc(92px + (var(--rows, 1) - 1) * 132px);
+  min-height: calc(88px + (var(--rows, 1) - 1) * 132px);
 }
 .service-tile.service-tall .svc-cell-value { font-size: 17px; }
 .service-tile.service-tall .svc-info-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
@@ -614,35 +614,48 @@ input { font-family: inherit; }
   transform: translateY(-2px);
   background: var(--panel-hover);
 }
-.service-tile-top { display: flex; align-items: flex-start; justify-content: space-between; }
-.service-tile img { width: 34px; height: 34px; object-fit: contain; border-radius: 2px; }
+.service-tile-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.service-tile img { width: 26px; height: 26px; object-fit: contain; border-radius: 2px; flex: none; }
 .service-letter {
-  width: 34px; height: 34px; border-radius: 2px;
+  width: 26px; height: 26px; border-radius: 2px;
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-display); font-weight: 700; font-size: 15px;
+  font-family: var(--font-display); font-weight: 700; font-size: 12px;
   background: var(--panel-raised); color: var(--accent);
+  flex: none;
 }
 .status-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--text-dim);
-  margin-top: 4px;
+  flex: none;
 }
 .status-dot.online { background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
 .status-dot.offline { background: var(--danger); }
-.service-name { font-size: 14px; font-weight: 600; }
+.service-title { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.service-name {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.service-ping {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.service-ping.online { color: var(--accent); }
+.service-ping.offline { color: var(--danger); }
 
-.service-title { min-width: 0; }
-.service-more { min-width: 0; }
-.service-uptime { margin-top: 2px; }
+.service-more { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .service-uptime .svc-up { color: var(--accent); }
 .service-uptime .svc-down { color: var(--danger); }
 .service-uptime .svc-check { color: var(--text-dim); }
 .service-uptime span {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 10px;
   letter-spacing: 0.02em;
 }
-.service-info { border-top: 1px solid var(--border-soft); padding-top: 10px; margin-top: 2px; container-type: inline-size; }
+.service-info { border-top: 1px solid var(--border-soft); padding-top: 8px; margin-top: 2px; container-type: inline-size; }
 
 @container (min-width: 560px) {
   .service-info { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
@@ -660,7 +673,7 @@ input { font-family: inherit; }
   background: var(--panel-raised);
   border: 1px solid var(--border-soft);
   border-radius: 2px;
-  padding: 6px 8px;
+  padding: 4px 6px;
   text-align: center;
 }
 .svc-cell.wide .svc-cell-value {
@@ -672,16 +685,16 @@ input { font-family: inherit; }
 .svc-cell.wide { grid-column: 1 / -1; }
 .svc-cell-value {
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--accent);
 }
 .svc-cell-label {
-  font-size: 9.5px;
+  font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
-  margin-top: 2px;
+  margin-top: 1px;
 }
 .svc-meta {
   font-size: 10.5px;
@@ -747,7 +760,7 @@ input { font-family: inherit; }
   align-items: baseline;
   background: var(--panel-raised);
   border: 1px solid var(--border-soft);
-  border-radius: 6px;
+  border-radius: 2px;
   padding: 4px 8px;
   font-size: 11px;
   min-width: 0;
