@@ -1329,6 +1329,11 @@ function attachResize(tile, svc) {
   });
 }
 
+function svcCell(label, value) {
+  const v = value != null ? value : "—";
+  return `<div class="svc-cell"><div class="svc-cell-value">${escapeHtml(String(v))}</div><div class="svc-cell-label">${escapeHtml(String(label))}</div></div>`;
+}
+
 function renderJellyfinInfo(d, span) {
   if (!d) return `<div class="svc-info-hint">checking…</div>`;
   const jf = d.jellyfin || {};
@@ -1336,8 +1341,6 @@ function renderJellyfinInfo(d, span) {
   const bits = [jf.os, jf.version, jf.arch].filter(Boolean);
   const name = jf.serverName || "Jellyfin";
   const metaLine = bits.length ? `<div class="svc-meta">${escapeHtml(name)} · ${escapeHtml(bits.join(" · "))}</div>` : "";
-  const cell = (label, value) =>
-    `<div class="svc-cell"><div class="svc-cell-value">${value != null ? value : "—"}</div><div class="svc-cell-label">${label}</div></div>`;
 
   if (n < INFO_TIERS.counts) {
     if (!jf.serverName && !jf.version) return `<div class="svc-info-hint">details unavailable</div>`;
@@ -1349,7 +1352,6 @@ function renderJellyfinInfo(d, span) {
     { label: "Series", value: jf.series },
     { label: "Episodes", value: jf.episodes },
     { label: "Streaming", value: jf.activeSessions },
-    { label: "Libraries", value: jf.libraries },
     { label: "Users", value: jf.users }
   ];
   const haveCounts = cells.some((c) => c.value != null);
@@ -1359,15 +1361,16 @@ function renderJellyfinInfo(d, span) {
 
   let html = `<div class="svc-info-grid">`;
   if (haveCounts) {
-    cells.forEach((c) => (html += cell(c.label, c.value)));
+    cells.forEach((c) => (html += svcCell(c.label, c.value)));
     if (n >= INFO_TIERS.extended) {
       [
+        ["Libraries", jf.libraries],
         ["Artists", jf.artists],
         ["Albums", jf.albums],
         ["Songs", jf.songs],
         ["Genres", jf.genres],
         ["Collections", jf.collections]
-      ].forEach(([label, value]) => (html += cell(label, value)));
+      ].forEach(([label, value]) => (html += svcCell(label, value)));
     }
   } else {
     html += `<div class="svc-cell wide"><div class="svc-cell-value">${escapeHtml(name)}</div><div class="svc-cell-label">server</div></div>`;
@@ -1425,14 +1428,19 @@ function renderTileInfo(tile, svc, span) {
     html += `<div class="service-info">${renderJellyfinInfo(d, n)}</div>`;
   } else if (n >= INFO_TIERS.meta && d) {
     const src = d.source === "docker" ? `docker · ${d.state || ""}` : "ping";
-    let meta = `source: ${escapeHtml(src)}`;
     const t = d.checkedAt ? new Date(d.checkedAt) : null;
     const checked = t && !isNaN(t) ? t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
-    meta += `<br>checked: ${escapeHtml(checked)}`;
-    if (n >= INFO_TIERS.counts) {
-      meta += `<br>${escapeHtml(String(svc.url || ""))}`;
+    const status = d.up ? "UP" : d.source === "docker" && d.state && d.state !== "running" ? String(d.state) : "down";
+    let grid = `<div class="svc-info-grid">`;
+    grid += svcCell("Status", status);
+    grid += svcCell("Uptime", d.up && d.uptimeSec != null ? fmtUp(d.uptimeSec) : "—");
+    grid += svcCell("Source", src);
+    grid += svcCell("Checked", checked);
+    if (n >= INFO_TIERS.counts && svc.url) {
+      grid += `<div class="svc-cell wide"><div class="svc-cell-value">${escapeHtml(String(svc.url))}</div><div class="svc-cell-label">URL</div></div>`;
     }
-    html += `<div class="service-info"><div class="svc-meta">${meta}</div></div>`;
+    grid += `</div>`;
+    html += `<div class="service-info">${grid}</div>`;
   }
   more.innerHTML = html;
 }

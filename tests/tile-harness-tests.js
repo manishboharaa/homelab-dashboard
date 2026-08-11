@@ -52,8 +52,8 @@ assert(moreLg.innerHTML.includes("412"), "jellyfin movies cell");
 assert(moreLg.innerHTML.includes("67"), "jellyfin series cell");
 assert(moreLg.innerHTML.includes("3400"), "jellyfin episodes cell");
 assert(moreLg.innerHTML.includes("Streaming"), "jellyfin streaming label");
-assert(moreLg.innerHTML.includes("Libraries"), "jellyfin libraries label");
 assert(moreLg.innerHTML.includes("Users"), "jellyfin users label");
+assert(!moreLg.innerHTML.includes("Libraries"), "jellyfin libraries label not in level-3 core fields");
 assert(moreLg.innerHTML.includes("10.9.11"), "jellyfin version in meta");
 
 applySpan(tileLg, jf, 1);
@@ -69,6 +69,7 @@ assert(moreLg.innerHTML.includes("Media-Server"), "span 2 shows server name meta
 assert(!moreLg.innerHTML.includes("412"), "span 2 hides counts grid");
 
 applySpan(tileLg, jf, 4);
+assert(moreLg.innerHTML.includes("Libraries"), "span 4 shows libraries");
 assert(moreLg.innerHTML.includes("Artists") && moreLg.innerHTML.includes("55"), "span 4 shows music artists");
 assert(moreLg.innerHTML.includes("Albums") && moreLg.innerHTML.includes("120"), "span 4 shows albums");
 assert(moreLg.innerHTML.includes("Songs") && moreLg.innerHTML.includes("3500"), "span 4 shows songs");
@@ -163,15 +164,15 @@ serviceInfoCache.set("p1", { data: { source: "ping", up: true, uptimeSec: 42 * 6
 const tileP = makeServiceTile(CONFIG.services[1]);
 applySpan(tileP, CONFIG.services[1], 2);
 eq(tileP.querySelector(".service-more").innerHTML.includes("42m"), true, "generic span 2 shows uptime");
-assert(tileP.querySelector(".service-more").innerHTML.includes("source: ping"), "generic span 2 shows source meta in small expand");
-assert(tileP.querySelector(".service-more").innerHTML.includes("checked:"), "generic span 2 shows checked in small expand");
+assert(tileP.querySelector(".service-more").innerHTML.includes(">ping<"), "generic span 2 shows source cell in small expand");
+assert(tileP.querySelector(".service-more").innerHTML.includes(">Checked<"), "generic span 2 shows checked cell in small expand");
 
 applySpan(tileP, CONFIG.services[1], 3);
 assert(tileP.querySelector(".service-more").innerHTML.includes("http://10.10.8.50:32400"), "generic span 3 shows url");
 
 applyRows(tileP, CONFIG.services[1], 2);
 applySpan(tileP, CONFIG.services[1], 3);
-eq(tileP.querySelector(".service-more").innerHTML.includes("checked:"), true, "generic span3 rows2 (level 4) still shows checked");
+eq(tileP.querySelector(".service-more").innerHTML.includes(">Checked<"), true, "generic span3 rows2 (level 4) still shows checked");
 assert(/\d{1,2}:\d{2}/.test(tileP.querySelector(".service-more").innerHTML), "generic checked shows a HH:MM time");
 
 applyRows(tileP, CONFIG.services[1], 3);
@@ -282,8 +283,8 @@ globalThis.__async = (async () => {
   hg.dispatch("pointermove", { clientX: 100, clientY: 364, preventDefault() {}, stopPropagation() {} });
   eq(tileG.dataset.rows, "3", "vertical preview drag rows → 3");
   eq(tileG.dataset.span, "1", "vertical preview keeps span 1");
-  assert(moreG.innerHTML.includes("source: docker · running"), "vertical-only drag re-renders: source shown mid-drag");
-  assert(moreG.innerHTML.includes("checked:"), "vertical-only drag re-renders: checked shown mid-drag");
+  assert(moreG.innerHTML.includes("docker · running"), "vertical-only drag re-renders: source shown mid-drag");
+  assert(moreG.innerHTML.includes(">Checked<"), "vertical-only drag re-renders: checked shown mid-drag");
   hg.dispatch("pointerup", { preventDefault() {}, stopPropagation() {} });
 })();
 
