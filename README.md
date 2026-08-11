@@ -74,9 +74,10 @@ No account, no cloud dependency, no API keys required to get started.
   on-screen **"Saved"** confirmation and the dashboard updates instantly —
   no reload needed.
 - **Resizable service tiles** — drag the bottom-right corner of any tile to
-  resize it freely to any width (1 column up to the full row); the more
-  space a tile has, the more info it shows: uptime from 2 columns, detail
-  panels from 3. Sizes are saved per service.
+  resize it freely: wider (1 column up to the full row) and/or taller. The
+  more space a tile has, the more info it shows: uptime from 2 columns,
+  source/checked time from 2 (non-API services), detail panels from 3.
+  Sizes are saved per service.
 - **Per-service uptime** — tiles show uptime in days/hours/minutes. Set a
   **Docker container name** in Settings and (with the socket mounted, below)
   a tile shows the container's *real* uptime; otherwise the dashboard

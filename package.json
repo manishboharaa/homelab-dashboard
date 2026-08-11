@@ -6,7 +6,8 @@
   "type": "commonjs",
   "license": "MIT",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node tests/tile-harness.js"
   },
   "dependencies": {
     "check-disk-space": "^3.4.0",
