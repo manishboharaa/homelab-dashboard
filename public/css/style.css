@@ -47,7 +47,7 @@ input { font-family: inherit; }
   font-size: 14px;
   font-weight: 600;
   border: 1px solid transparent;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 .btn-primary {
   background: var(--accent);
@@ -178,7 +178,7 @@ input { font-family: inherit; }
   align-items: center;
   gap: 8px;
   text-align: center;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease;
 }
 .catalog-item img { width: 28px; height: 28px; object-fit: contain; }
 .catalog-item span { font-size: 12px; color: var(--text-muted); }
@@ -598,7 +598,7 @@ input { font-family: inherit; }
   text-decoration: none;
   color: var(--text);
   position: relative;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
   min-height: calc(92px + (var(--rows, 1) - 1) * 132px);
 }
 .service-tile.service-tall .svc-cell-value { font-size: 17px; }
@@ -758,10 +758,10 @@ input { font-family: inherit; }
 }
 .resize-handle {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 14px;
-  height: 14px;
+  right: 0;
+  bottom: 0;
+  width: 24px;
+  height: 24px;
   cursor: nwse-resize;
   opacity: 0;
   transition: opacity 0.15s ease;
@@ -770,8 +770,8 @@ input { font-family: inherit; }
 .resize-handle::after {
   content: "";
   position: absolute;
-  right: 2px;
-  bottom: 2px;
+  right: 5px;
+  bottom: 5px;
   width: 7px;
   height: 7px;
   border-right: 2px solid var(--text-muted);
@@ -1003,6 +1003,13 @@ input { font-family: inherit; }
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-primary:hover { transform: none; }
+  .service-tile:hover { transform: none; }
+  .toast { animation: none; }
+  .meter-fill { transition: none; }
 }
 
 

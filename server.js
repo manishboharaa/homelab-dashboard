@@ -9,6 +9,7 @@ const Parser = require("rss-parser");
 const fetch = require("node-fetch");
 const checkDiskSpace = require("check-disk-space").default;
 const unixpass = require("unixpass");
+const helmet = require("helmet");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -24,6 +25,15 @@ const PROBE_TIMEOUT = 6000;
 
 const rssParser = new Parser({ timeout: 8000 });
 
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "img-src": ["'self'", "data:", "http:", "https:"],
+      "upgrade-insecure-requests": null,
+    },
+  },
+}));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -1155,7 +1165,44 @@ app.get("/api/proxmox/guest/:node/:type/:vmid", async (req, res) => {
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
+app.use((req, res) => {
+  res.status(404).json({ error: "not found" });
+});
+
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(err.status || 500).json({
+    error: err.message || "internal server error",
+    ...(process.env.NODE_ENV === "production" ? {} : { detail: String(err.stack) }),
+  });
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+  shutdown("uncaughtException", 1);
+});
+
+let shuttingDown = false;
+function shutdown(reason, code = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${reason} received, shutting down gracefully...`);
+  const forceTimer = setTimeout(() => process.exit(code), 10000);
+  forceTimer.unref();
+  server.close(() => {
+    console.log("Server closed.");
+    process.exit(code);
+  });
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
 ensureConfig();
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Homelab dashboard listening on port ${PORT}`);
 });
