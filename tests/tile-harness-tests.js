@@ -69,17 +69,26 @@ assert(!moreLg.innerHTML.includes("Media-Server"), "span 2 hides server meta bel
 assert(!moreLg.innerHTML.includes("412"), "span 2 hides counts grid");
 
 applySpan(tileLg, jf, 4);
-assert(moreLg.innerHTML.includes("Libraries"), "span 4 shows libraries");
-assert(moreLg.innerHTML.includes("Artists") && moreLg.innerHTML.includes("55"), "span 4 shows music artists");
-assert(moreLg.innerHTML.includes("Albums") && moreLg.innerHTML.includes("120"), "span 4 shows albums");
-assert(moreLg.innerHTML.includes("Songs") && moreLg.innerHTML.includes("3500"), "span 4 shows songs");
-assert(moreLg.innerHTML.includes("Genres") && moreLg.innerHTML.includes("42"), "span 4 shows genres");
-assert(moreLg.innerHTML.includes("Collections") && moreLg.innerHTML.includes("9"), "span 4 shows collections");
+assert(!moreLg.innerHTML.includes("Libraries"), "span 4 hides libraries cell");
+assert(!moreLg.innerHTML.includes("Artists"), "span 4 hides artists");
+assert(!moreLg.innerHTML.includes("Albums"), "span 4 hides albums");
+assert(moreLg.innerHTML.includes("Songs") && moreLg.innerHTML.includes("3500"), "span 4 shows songs when > 0");
+assert(!moreLg.innerHTML.includes("Genres"), "span 4 hides genres");
+assert(!moreLg.innerHTML.includes("Collections"), "span 4 hides collections");
 assert(!moreLg.innerHTML.includes("svc-chart"), "span 4 hides plays chart");
 
+const jfData = serviceInfoCache.get(jf.id).data;
+const prevSongs = jfData.jellyfin.songs;
+jfData.jellyfin.songs = 0;
+applySpan(tileLg, jf, 4);
+assert(!moreLg.innerHTML.includes("Songs"), "span 4 hides songs when count is 0");
+jfData.jellyfin.songs = prevSongs;
+applySpan(tileLg, jf, 4);
+assert(moreLg.innerHTML.includes("Songs"), "span 4 shows songs again when count > 0");
+
 applySpan(tileLg, jf, 5);
-assert(moreLg.innerHTML.includes("plays · last 14 days"), "span 5 shows plays chart");
-assert(moreLg.innerHTML.includes("svc-bar-fill"), "span 5 renders chart bars");
+assert(!moreLg.innerHTML.includes("plays · last 14 days"), "span 5 shows no plays chart");
+assert(!moreLg.innerHTML.includes("svc-bar-fill"), "span 5 renders no chart bars");
 assert(!moreLg.innerHTML.includes("svc-lib"), "span 5 hides library breakdown");
 
 applySpan(tileLg, jf, 6);
@@ -91,7 +100,6 @@ eq(tileLg.style["--tile-span"], "6", "applySpan sets --tile-span var");
 eq(INFO_TIERS.meta, 2, "INFO_TIERS.meta is 2");
 eq(INFO_TIERS.counts, 3, "INFO_TIERS.counts is 3");
 eq(INFO_TIERS.extended, 4, "INFO_TIERS.extended is 4");
-eq(INFO_TIERS.chart, 5, "INFO_TIERS.chart is 5");
 eq(INFO_TIERS.libraries, 6, "INFO_TIERS.libraries is 6");
 
 applySpan(tileLg, jf, 5);
@@ -117,11 +125,12 @@ eq(tileTall.dataset.rows, "4", "tall tile has rows 4");
 renderTileInfo(tileTall, jfTall, 1);
 const tallMore = tileTall.querySelector(".service-more");
 assert(tallMore.innerHTML.includes("412"), "narrow tall tile (span1 rows4) shows counts");
-assert(tallMore.innerHTML.includes("Artists") && tallMore.innerHTML.includes("55"), "narrow tall tile shows extended cells");
-assert(!tallMore.innerHTML.includes("svc-chart"), "narrow rows4 tile stays below chart level");
+assert(tallMore.innerHTML.includes("Songs") && tallMore.innerHTML.includes("3500"), "narrow tall tile shows songs when > 0");
+assert(!tallMore.innerHTML.includes("Artists"), "narrow tall tile hides artists");
+assert(!tallMore.innerHTML.includes("svc-chart"), "narrow rows4 tile shows no chart");
 applyRows(tileTall, jfTall, 6);
 applySpan(tileTall, jfTall, 1);
-assert(tallMore.innerHTML.includes("svc-chart"), "span1 rows6 reaches chart level");
+assert(!tallMore.innerHTML.includes("svc-chart"), "span1 rows6 still shows no chart");
 assert(tallMore.innerHTML.includes("svc-lib"), "span1 rows6 reaches libraries level");
 
 eq(cachedInfo(jf, 4) != null, true, "cachedInfo ok for level <= cached level");

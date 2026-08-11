@@ -1165,7 +1165,7 @@ const MAX_TILE_SPAN = 24;
 const ROW_UNIT = 132;
 const MAX_TILE_ROWS = 8;
 
-const INFO_TIERS = { meta: 2, counts: 3, extended: 4, chart: 5, libraries: 6 };
+const INFO_TIERS = { meta: 2, counts: 3, extended: 4, libraries: 6 };
 
 function levelFor(span, rows) {
   return Math.min(6, Math.max(1, span + Math.max(0, rows - 1)));
@@ -1362,24 +1362,14 @@ function renderJellyfinInfo(d, span) {
   let html = `<div class="svc-info-grid">`;
   if (haveCounts) {
     cells.forEach((c) => (html += svcCell(c.label, c.value)));
-    if (n >= INFO_TIERS.extended) {
-      [
-        ["Libraries", jf.libraries],
-        ["Artists", jf.artists],
-        ["Albums", jf.albums],
-        ["Songs", jf.songs],
-        ["Genres", jf.genres],
-        ["Collections", jf.collections]
-      ].forEach(([label, value]) => (html += svcCell(label, value)));
+    if (n >= INFO_TIERS.extended && jf.songs > 0) {
+      html += svcCell("Songs", jf.songs);
     }
   } else {
     html += `<div class="svc-cell wide"><div class="svc-cell-value">${escapeHtml(name)}</div><div class="svc-cell-label">server</div></div>`;
   }
   html += `</div>`;
 
-  if (n >= INFO_TIERS.chart && jf.recentPlays && Array.isArray(jf.recentPlays.values)) {
-    html += renderRecentPlays(jf.recentPlays);
-  }
   if (n >= INFO_TIERS.libraries && Array.isArray(jf.libraryTotals)) {
     html += `<div class="svc-libs">${jf.libraryTotals
       .map(
@@ -1390,16 +1380,6 @@ function renderJellyfinInfo(d, span) {
   }
   html += metaLine;
   return html;
-}
-
-function renderRecentPlays(rp) {
-  const { labels = [], values = [], max = 1 } = rp;
-  let bars = "";
-  values.forEach((v, i) => {
-    const h = max ? Math.max(3, Math.round((v / max) * 46)) : 3;
-    bars += `<div class="svc-bar" title="${escapeHtml((labels[i] || "") + ": " + v)}"><div class="svc-bar-fill" style="height:${h}px"></div><div class="svc-bar-label">${escapeHtml(labels[i] || "")}</div></div>`;
-  });
-  return `<div class="svc-chart"><div class="svc-chart-title">plays · last 14 days</div><div class="svc-chart-bars">${bars}</div></div>`;
 }
 
 function renderTileInfo(tile, svc, span) {
