@@ -199,7 +199,7 @@ here's what each piece maps to under the hood:
 
 | Setting | Where to set it | Notes |
 |---|---|---|
-| Services (name, URL, icon, category) | Wizard step 2, or Settings → Services | Add from Settings shows icon + name suggestions; every service is editable in place (name, IP/port, category) with a per-row **Save** |
+| Services (name, URL, icon, category) | Wizard step 2, or Settings → Services | Add from Settings shows icon + name suggestions; every service is editable in place (name, IP/port, category) — one **Save** at the top of Settings saves every tab |
 | Your name | Wizard step 1, or Settings → Profile | Used only for the greeting |
 | Weather location | Wizard step 3, or Settings → Weather | Search by city name; °F/°C auto-detected from the location |
 | RSS feeds | Wizard step 4, or Settings → News Feeds | Any standard RSS/Atom feed URL |
