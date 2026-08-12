@@ -256,7 +256,10 @@
   <div class="modal-panel">
     <div class="modal-head">
       <h2>Settings</h2>
-      <button class="icon-btn" id="closeSettings">✕</button>
+      <div class="modal-head-actions">
+        <button class="btn btn-primary" id="saveSettings">Save</button>
+        <button class="icon-btn" id="closeSettings">✕</button>
+      </div>
     </div>
     <div class="modal-tabs">
       <button class="tab-btn active" data-tab="services">Services</button>
@@ -301,7 +304,6 @@
       <div class="tab-pane" data-pane="profile">
         <label class="field-label">Your name</label>
         <input id="settingsProfileName" type="text" class="wizard-input small" />
-        <button class="btn btn-primary" id="saveProfile">Save</button>
       </div>
 
       <div class="tab-pane" data-pane="weather">
@@ -326,7 +328,6 @@
         </label>
         <input id="settingsPiholeUrl" type="text" placeholder="http://192.168.1.10" class="wizard-input small" />
         <input id="settingsPiholeKey" type="text" placeholder="API key" class="wizard-input small" />
-        <button class="btn btn-primary" id="savePihole">Save</button>
       </div>
 
       <div class="tab-pane" data-pane="adguard">
@@ -342,7 +343,6 @@
         <input id="settingsAdguardUser" type="text" placeholder="Username (e.g. admin)" class="wizard-input small" />
         <input id="settingsAdguardPass" type="password" placeholder="Password" class="wizard-input small" />
         <p class="wizard-sub" id="settingsAdguardModeHint">Standard AdGuard Home: use the username &amp; password from AdGuard's own admin.</p>
-        <button class="btn btn-primary" id="saveAdguard">Save</button>
       </div>
 
       <div class="tab-pane" data-pane="proxmox">
@@ -354,13 +354,11 @@
         <input id="settingsProxmoxUrl" type="text" placeholder="https://192.168.1.10:8006" class="wizard-input small" />
         <input id="settingsProxmoxTokenId" type="text" placeholder="Token ID (e.g. user@pam!dashboard)" class="wizard-input small" />
         <input id="settingsProxmoxTokenSecret" type="password" placeholder="API token secret (UUID)" class="wizard-input small" />
-        <button class="btn btn-primary" id="saveProxmox">Save</button>
       </div>
 
       <div class="tab-pane" data-pane="system">
         <p class="wizard-sub">Pick up to 6 stats to show on the first row of the system panel. Click "Show all" on the dashboard to see the rest.</p>
         <div id="settingsStatsList" class="stats-pick-list"></div>
-        <button class="btn btn-primary" id="saveSystem">Save</button>
       </div>
     </div>
   </div>

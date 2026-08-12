@@ -863,6 +863,7 @@ input { font-family: inherit; }
 }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--border); }
 .modal-head h2 { font-family: var(--font-display); margin: 0; font-size: 19px; }
+.modal-head-actions { display: flex; align-items: center; gap: 10px; }
 .modal-tabs { display: flex; gap: 4px; padding: 12px 24px 0; border-bottom: 1px solid var(--border); }
 .tab-btn {
   background: none; border: none; color: var(--text-muted); padding: 10px 14px;
@@ -891,13 +892,6 @@ input { font-family: inherit; }
 }
 .ss-input:focus { border-color: var(--accent-dim); outline: none; }
 .ss-remove { background: none; border: none; color: var(--danger); font-size: 15px; cursor: pointer; padding: 0 2px; flex: none; }
-.ss-save {
-  background: var(--accent); border: 1px solid var(--accent); border-radius: 6px;
-  color: #06110e; font-size: 12px; font-weight: 600; padding: 6px 16px;
-  cursor: pointer; white-space: nowrap; flex: none;
-  box-shadow: 0 0 0 0 var(--accent-glow); transition: box-shadow 0.15s ease;
-}
-.ss-save:hover { box-shadow: 0 0 12px var(--accent-glow); }
 
 .ss-group-head {
   font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;

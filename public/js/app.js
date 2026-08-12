@@ -1642,6 +1642,7 @@ function makeCategoryField(current) {
 function makeServiceRow(svc) {
   const row = document.createElement("div");
   row.className = "settings-service-row";
+  row.dataset.id = svc.id;
   const iconHtml = svc.icon
     ? `<img src="${svc.icon}" onerror="this.outerHTML=letterAvatar('${escapeHtml(svc.name)}')" />`
     : letterAvatar(svc.name);
@@ -1668,14 +1669,9 @@ function makeServiceRow(svc) {
   urlInput.title = "IP and port";
   urlInput.placeholder = "http://192.168.1.50:8080";
   const catField = makeCategoryField(svc.category);
-  const saveBtn = document.createElement("button");
-  saveBtn.className = "ss-save";
-  saveBtn.title = "Save changes";
-  saveBtn.textContent = "Save";
   bottom.appendChild(urlInput);
   bottom.appendChild(catField.select);
   bottom.appendChild(catField.input);
-  bottom.appendChild(saveBtn);
 
   const isJelly = svc.type === "jellyfin" || String(svc.name || "").trim().toLowerCase() === "jellyfin";
   let dockerInput = null;
@@ -1715,8 +1711,9 @@ function makeServiceRow(svc) {
   row.appendChild(top);
   row.appendChild(bottom);
 
-  const doSave = async () => {
+  row.collect = () => {
     const updated = {
+      id: svc.id,
       name: nameInput.value.trim() || svc.name,
       url: urlInput.value.trim(),
       category: catField.value() || "Other"
@@ -1727,47 +1724,9 @@ function makeServiceRow(svc) {
       updated.details = detailsInput.checked;
       updated.apiKey = detailsInput.checked ? apiKeyInput.value.trim() : "";
     }
-    const res = await fetch(`/api/services/${svc.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updated)
-    });
-    if (res.ok) Object.assign(svc, await res.json());
-    renderSettingsServices();
-    renderServices();
-    toastResult(res, "Service updated");
+    return updated;
   };
-  saveBtn.addEventListener("click", doSave);
-  nameInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      doSave();
-    }
-  });
-  urlInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      doSave();
-    }
-  });
-  dockerInput?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      doSave();
-    }
-  });
-  apiKeyInput?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      doSave();
-    }
-  });
-  catField.input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      doSave();
-    }
-  });
+
   removeBtn.addEventListener("click", async () => {
     const res = await fetch(`/api/services/${svc.id}`, { method: "DELETE" });
     CONFIG.services = CONFIG.services.filter((s) => s.id !== svc.id);
@@ -1973,17 +1932,7 @@ function initSettingsModal() {
     toastResult(res, "Service added");
   });
 
-  document.getElementById("saveProfile").addEventListener("click", async () => {
-    const name = document.getElementById("settingsProfileName").value.trim();
-    const res = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profile: { name } })
-    });
-    CONFIG = await res.json();
-    renderGreeting();
-    toastResult(res, "Profile saved");
-  });
+  document.getElementById("saveSettings").addEventListener("click", saveSettings);
 
   setupWeatherSearch("settingsWeatherSearch", "settingsWeatherResults", async (chosen) => {
     const weather = {
@@ -2013,59 +1962,8 @@ function initSettingsModal() {
     renderRssEditor("settingsRssList", CONFIG.rss.feeds, persistRssFeeds);
   });
 
-  document.getElementById("savePihole").addEventListener("click", async () => {
-    const pihole = {
-      enabled: document.getElementById("settingsPiholeEnabled").checked,
-      url: document.getElementById("settingsPiholeUrl").value.trim(),
-      apiKey: document.getElementById("settingsPiholeKey").value.trim()
-    };
-    const res = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pihole })
-    });
-    CONFIG = await res.json();
-    refreshPihole();
-    toastResult(res, "Pi-hole settings saved");
-  });
-
   document.getElementById("settingsAdguardMode").addEventListener("change", () => {
     applyAdguardModeUi("settingsAdguard");
-  });
-
-  document.getElementById("saveAdguard").addEventListener("click", async () => {
-    const adguard = {
-      enabled: document.getElementById("settingsAdguardEnabled").checked,
-      url: document.getElementById("settingsAdguardUrl").value.trim(),
-      username: document.getElementById("settingsAdguardUser").value.trim(),
-      password: document.getElementById("settingsAdguardPass").value,
-      authMode: document.getElementById("settingsAdguardMode").value
-    };
-    const res = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ adguard })
-    });
-    CONFIG = await res.json();
-    refreshAdguard();
-    toastResult(res, "AdGuard settings saved");
-  });
-
-  document.getElementById("saveProxmox").addEventListener("click", async () => {
-    const proxmox = {
-      enabled: document.getElementById("settingsProxmoxEnabled").checked,
-      url: document.getElementById("settingsProxmoxUrl").value.trim(),
-      tokenId: document.getElementById("settingsProxmoxTokenId").value.trim(),
-      tokenSecret: document.getElementById("settingsProxmoxTokenSecret").value
-    };
-    const res = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ proxmox })
-    });
-    CONFIG = await res.json();
-    refreshProxmox();
-    toastResult(res, "Proxmox settings saved");
   });
 
   document.getElementById("settingsStatsList").addEventListener("change", (e) => {
@@ -2075,20 +1973,51 @@ function initSettingsModal() {
       showToast("Pick up to 6 stats for the first row");
     }
   });
+}
 
-  document.getElementById("saveSystem").addEventListener("click", async () => {
-    const keys = [...document.querySelectorAll("#settingsStatsList input:checked")]
-      .map((i) => i.value)
-      .slice(0, 6);
-    const res = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ system: { pinnedStats: keys } })
-    });
-    CONFIG = await res.json();
-    refreshStats();
-    toastResult(res, "System info saved");
+async function saveSettings() {
+  const payload = {
+    profile: { name: document.getElementById("settingsProfileName").value.trim() },
+    pihole: {
+      enabled: document.getElementById("settingsPiholeEnabled").checked,
+      url: document.getElementById("settingsPiholeUrl").value.trim(),
+      apiKey: document.getElementById("settingsPiholeKey").value.trim()
+    },
+    adguard: {
+      enabled: document.getElementById("settingsAdguardEnabled").checked,
+      url: document.getElementById("settingsAdguardUrl").value.trim(),
+      username: document.getElementById("settingsAdguardUser").value.trim(),
+      password: document.getElementById("settingsAdguardPass").value,
+      authMode: document.getElementById("settingsAdguardMode").value
+    },
+    proxmox: {
+      enabled: document.getElementById("settingsProxmoxEnabled").checked,
+      url: document.getElementById("settingsProxmoxUrl").value.trim(),
+      tokenId: document.getElementById("settingsProxmoxTokenId").value.trim(),
+      tokenSecret: document.getElementById("settingsProxmoxTokenSecret").value
+    },
+    system: {
+      pinnedStats: [...document.querySelectorAll("#settingsStatsList input:checked")]
+        .map((i) => i.value)
+        .slice(0, 6)
+    }
+  };
+  const rows = [...document.querySelectorAll("#settingsServicesList .settings-service-row")];
+  if (rows.length) payload.services = rows.map((r) => r.collect());
+  const res = await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
   });
+  CONFIG = await res.json();
+  renderSettingsServices();
+  renderServices();
+  renderGreeting();
+  refreshPihole();
+  refreshAdguard();
+  refreshProxmox();
+  refreshStats();
+  toastResult(res, "Settings saved");
 }
 
 boot();

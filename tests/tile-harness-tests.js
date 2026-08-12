@@ -325,11 +325,9 @@ assert(!extraJf.children.some((c) => c.className.includes("ss-type-input")), "je
 const rowJfByName = makeServiceRow({ id: "r3", name: "jellyfin", url: "http://x", icon: null, category: "Media", size: "sm", docker: "", type: null, details: false, apiKey: "" });
 assert(!!rowJfByName.children.find((c) => c.className === "ss-row-extra"), "row named jellyfin (case-insensitive) gets extras");
 
-const jfPutBefore = fetchCalls.length;
-rowJf.children.find((c) => c.className === "ss-row-bottom").children.find((c) => c.className === "ss-save").dispatch("click");
-const jfPut = fetchCalls.find((c, i) => i >= jfPutBefore && c.url === "/api/services/r1" && c.opts.method === "PUT");
-assert(!!jfPut, "jellyfin row save issues PUT");
-assert(jfPut.opts.body.includes('"type":"jellyfin"') && jfPut.opts.body.includes('"docker":"jellyfin"'), "jellyfin save carries type + docker");
+const jfCollected = rowJf.collect();
+assert(jfCollected.id === "r1" && jfCollected.type === "jellyfin" && jfCollected.docker === "jellyfin", "jellyfin row collect() carries id + type + docker");
+assert(!rowJf.children.some((c) => c.className.includes("ss-save")), "row has NO per-row save button");
 
 const rowP = makeServiceRow({ id: "r2", name: "Plex", url: "http://x", icon: null, category: "Media", size: "sm", docker: "", type: null, details: false, apiKey: "" });
 const extraP = rowP.children.find((c) => c.className === "ss-row-extra");
