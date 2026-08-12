@@ -1162,10 +1162,10 @@ function fmtUp(sec) {
 const MIN_TILE_COL = 160;
 const GRID_GAP = 14;
 const MAX_TILE_SPAN = 24;
-const ROW_UNIT = 132;
+const ROW_UNIT = 88;
 const MAX_TILE_ROWS = 8;
 
-const INFO_TIERS = { meta: 2, counts: 3, extended: 4, libraries: 6 };
+const INFO_TIERS = { meta: 2, counts: 3, extended: 4, libraries: 5 };
 
 function levelFor(span, rows) {
   return Math.min(6, Math.max(1, span + Math.max(0, rows - 1)));
@@ -1208,7 +1208,7 @@ function applyRows(tile, svc, n) {
   return rows;
 }
 
-function applySpan(tile, svc, n) {
+function applySpan(tile, svc, n, skipRender) {
   const span = Math.min(MAX_TILE_SPAN, Math.max(1, n));
   const cols = gridColsFor(tile);
   tile.dataset.span = span;
@@ -1217,7 +1217,7 @@ function applySpan(tile, svc, n) {
   const grid = tile.closest ? tile.closest(".services-grid") : null;
   if (grid) grid.style.setProperty("--cols", cols);
   tile.style.gridColumn = span >= cols ? "1 / -1" : `span ${span}`;
-  renderTileInfo(tile, svc, span);
+  if (!skipRender) renderTileInfo(tile, svc, span);
   return span;
 }
 
@@ -1248,6 +1248,16 @@ function attachResize(tile, svc) {
   let startRows = 1;
   let rows = 1;
   let lastPreviewFetch = 0;
+  let rafId = 0;
+
+  function previewRender() {
+    if (typeof requestAnimationFrame === "function") {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => renderTileInfo(tile, svc, span));
+    } else {
+      renderTileInfo(tile, svc, span);
+    }
+  }
 
   function queueInfoFetch() {
     const now = Date.now();
@@ -1284,18 +1294,18 @@ function attachResize(tile, svc) {
     const next = Math.min(MAX_TILE_SPAN, Math.max(1, startSpan + delta));
     const dy = (typeof e.clientY === "number" && typeof startY === "number") ? e.clientY - startY : 0;
     const nextRows = Math.min(MAX_TILE_ROWS, Math.max(1, startRows + Math.round(dy / ROW_UNIT)));
-    let rowsChanged = false;
+    let changed = false;
     if (nextRows !== rows) {
       rows = nextRows;
       applyRows(tile, svc, rows);
-      rowsChanged = true;
+      changed = true;
     }
     if (next !== span) {
       span = next;
-      applySpan(tile, svc, span);
-    } else if (rowsChanged) {
-      renderTileInfo(tile, svc, span);
+      applySpan(tile, svc, span, true);
+      changed = true;
     }
+    if (changed) previewRender();
     queueInfoFetch();
   });
 
@@ -1303,6 +1313,7 @@ function attachResize(tile, svc) {
     if (!dragging) return;
     dragging = false;
     tile.classList.remove("resizing");
+    if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(rafId);
     if (span === startSpan && rows === startRows) return;
     svc.size = span;
     svc.rows = rows;
@@ -1319,6 +1330,7 @@ function attachResize(tile, svc) {
     if (!dragging) return;
     dragging = false;
     tile.classList.remove("resizing");
+    if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(rafId);
     applySpan(tile, svc, sizeSpan(svc.size));
     applyRows(tile, svc, rowCount(svc.rows));
   });

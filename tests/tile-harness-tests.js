@@ -89,7 +89,7 @@ assert(moreLg.innerHTML.includes("Songs"), "span 4 shows songs again when count 
 applySpan(tileLg, jf, 5);
 assert(!moreLg.innerHTML.includes("plays · last 14 days"), "span 5 shows no plays chart");
 assert(!moreLg.innerHTML.includes("svc-bar-fill"), "span 5 renders no chart bars");
-assert(!moreLg.innerHTML.includes("svc-lib"), "span 5 hides library breakdown");
+assert(moreLg.innerHTML.includes("svc-lib") && moreLg.innerHTML.includes("TV Shows"), "span 5 shows library breakdown");
 
 applySpan(tileLg, jf, 6);
 assert(moreLg.innerHTML.includes("svc-lib") && moreLg.innerHTML.includes("TV Shows"), "span 6 shows library breakdown");
@@ -100,7 +100,7 @@ eq(tileLg.style["--tile-span"], "6", "applySpan sets --tile-span var");
 eq(INFO_TIERS.meta, 2, "INFO_TIERS.meta is 2");
 eq(INFO_TIERS.counts, 3, "INFO_TIERS.counts is 3");
 eq(INFO_TIERS.extended, 4, "INFO_TIERS.extended is 4");
-eq(INFO_TIERS.libraries, 6, "INFO_TIERS.libraries is 6");
+eq(INFO_TIERS.libraries, 5, "INFO_TIERS.libraries is 5");
 
 applySpan(tileLg, jf, 5);
 eq(tileLg.style["--tile-span"], "5", "--tile-span tracks span changes");
@@ -241,8 +241,8 @@ applyRows(tileR, CONFIG.services[2], 1);
 const rBefore = fetchCalls.length;
 const hr = tileR.querySelector(".resize-handle");
 hr.dispatch("pointerdown", { clientX: 100, clientY: 100, preventDefault() {}, stopPropagation() {}, pointerId: 9 });
-hr.dispatch("pointermove", { clientX: 100, clientY: 360, preventDefault() {}, stopPropagation() {} });
-eq(tileR.dataset.rows, "3", "downward drag +260px → rows 3");
+hr.dispatch("pointermove", { clientX: 100, clientY: 276, preventDefault() {}, stopPropagation() {} });
+eq(tileR.dataset.rows, "3", "downward drag +176px → rows 3");
 eq(tileR.dataset.span, "1", "pure vertical drag keeps span 1");
 assert(tileR.classList.contains("service-tall"), "vertical drag adds service-tall");
 hr.dispatch("pointerup", { preventDefault() {}, stopPropagation() {} });
@@ -290,7 +290,7 @@ globalThis.__async = (async () => {
   assert(moreG.innerHTML.includes("service-uptime"), "span1 rows1 shows uptime line");
   const hg = tileG.querySelector(".resize-handle");
   hg.dispatch("pointerdown", { clientX: 100, clientY: 100, preventDefault() {}, stopPropagation() {}, pointerId: 11 });
-  hg.dispatch("pointermove", { clientX: 100, clientY: 364, preventDefault() {}, stopPropagation() {} });
+  hg.dispatch("pointermove", { clientX: 100, clientY: 276, preventDefault() {}, stopPropagation() {} });
   eq(tileG.dataset.rows, "3", "vertical preview drag rows → 3");
   eq(tileG.dataset.span, "1", "vertical preview keeps span 1");
   assert(moreG.innerHTML.includes("service-uptime"), "vertical-only drag re-renders: uptime line shown mid-drag");

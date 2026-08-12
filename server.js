@@ -238,39 +238,10 @@ function jellyfinRequest(baseUrl, apiKey, agent) {
   return o;
 }
 
-function bucketRecentPlays(items, days = 14) {
-  const now = new Date();
-  const keys = [];
-  const counts = {};
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() - i);
-    const k = d.toDateString();
-    keys.push(k);
-    counts[k] = 0;
-  }
-  (items || []).forEach((it) => {
-    if (!it || !it.DatePlayed) return;
-    const d = new Date(it.DatePlayed);
-    if (isNaN(d)) return;
-    const k = d.toDateString();
-    if (k in counts) counts[k]++;
-  });
-  return {
-    days,
-    labels: keys.map((k) => k.slice(4, 10)),
-    values: keys.map((k) => counts[k]),
-    max: Math.max(1, ...keys.map((k) => counts[k]))
-  };
-}
-
 async function fetchJellyfinInfo(baseUrl, apiKey, span) {
   const base = normalizeUrl(baseUrl).replace(/\/$/, "");
   if (!base) return {};
-  const wantGenres = span >= 4;
-  const wantPlays = span >= 5;
-  const wantLibs = span >= 6;
+  const wantLibs = span >= 5;
   const out = {};
   const settled = await Promise.allSettled([
     fetch(`${base}/System/Info/Public`, jellyfinRequest(base, apiKey, jellyfinAgent)),
@@ -283,15 +254,9 @@ async function fetchJellyfinInfo(baseUrl, apiKey, span) {
     apiKey
       ? fetch(`${base}/Library/MediaFolders`, jellyfinRequest(base, apiKey, jellyfinAgent))
       : Promise.resolve(null),
-    apiKey ? fetch(`${base}/Users`, jellyfinRequest(base, apiKey, jellyfinAgent)) : Promise.resolve(null),
-    apiKey && wantGenres
-      ? fetch(`${base}/Genres?Limit=1`, jellyfinRequest(base, apiKey, jellyfinAgent))
-      : Promise.resolve(null),
-    apiKey && wantGenres
-      ? fetch(`${base}/Items?IncludeItemTypes=BoxSet&Limit=1&Recursive=true`, jellyfinRequest(base, apiKey, jellyfinAgent))
-      : Promise.resolve(null)
+    apiKey ? fetch(`${base}/Users`, jellyfinRequest(base, apiKey, jellyfinAgent)) : Promise.resolve(null)
   ]);
-  const [pub, counts, sessions, folders, users, genres, boxes] = settled;
+  const [pub, counts, sessions, folders, users] = settled;
 
   if (pub.status === "fulfilled" && pub.value && pub.value.ok) {
     const p = await pub.value.json();
@@ -313,21 +278,10 @@ async function fetchJellyfinInfo(baseUrl, apiKey, span) {
     const s = await sessions.value.json();
     out.activeSessions = Array.isArray(s) ? s.filter((x) => x && x.NowPlayingItem).length : null;
   }
-  if (apiKey && wantGenres && genres.status === "fulfilled" && genres.value && genres.value.ok) {
-    const g = await genres.value.json();
-    out.genres = g.TotalRecordCount != null ? g.TotalRecordCount : null;
-  }
-  if (apiKey && wantGenres && boxes.status === "fulfilled" && boxes.value && boxes.value.ok) {
-    const b = await boxes.value.json();
-    out.collections = b.TotalRecordCount != null ? b.TotalRecordCount : null;
-  }
-  let userId = null;
   if (apiKey && users.status === "fulfilled" && users.value && users.value.ok) {
     const u = await users.value.json();
     out.users = Array.isArray(u) ? u.length : null;
-    if (Array.isArray(u) && u.length && u[0].Id) userId = u[0].Id;
-  }
-  let folderItems = [];
+  }  let folderItems = [];
   if (apiKey && folders.status === "fulfilled" && folders.value && folders.value.ok) {
     const f = await folders.value.json();
     out.libraries = Array.isArray(f.Items) ? f.Items.length : null;
@@ -353,17 +307,6 @@ async function fetchJellyfinInfo(baseUrl, apiKey, span) {
           count: d.TotalRecordCount != null ? d.TotalRecordCount : null
         });
       } catch {}
-    }
-  }
-
-  if (apiKey && wantPlays && userId) {
-    const rec = await fetch(
-      `${base}/Users/${encodeURIComponent(userId)}/Items?Limit=50&SortBy=DatePlayed&SortOrder=Descending&Filters=IsPlayed&Recursive=true&IncludeItemTypes=Movie,Episode&Fields=DatePlayed`,
-      jellyfinRequest(base, apiKey, jellyfinAgent)
-    ).catch(() => null);
-    if (rec && rec.ok) {
-      const data = await rec.json().catch(() => null);
-      if (data && Array.isArray(data.Items)) out.recentPlays = bucketRecentPlays(data.Items);
     }
   }
   return out;
