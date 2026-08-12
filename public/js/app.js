@@ -1099,7 +1099,7 @@ function makeServiceTile(svc) {
   attachResize(tile, svc);
   renderTileInfo(tile, svc);
   checkStatus(tile.querySelector(".status-dot"), svc.url, document.getElementById(`ping-${svc.id}`));
-  if (levelFor(sizeSpan(svc.size), rowCount(svc.rows)) >= 2 && !serviceInfoCache.has(svc.id)) {
+  if (!serviceInfoCache.has(svc.id)) {
     fetchServiceInfo(svc, sizeSpan(svc.size)).then(() => renderTileInfo(tile, svc, sizeSpan(svc.size)));
   }
   return tile;
@@ -1137,7 +1137,6 @@ function refreshServiceInfo() {
     const svc = CONFIG.services.find((s) => s.id === tile.dataset.id);
     if (!svc) return;
     const level = levelFor(span, rowCount(svc.rows));
-    if (level < 2) return;
     const cached = cachedInfo(svc, level);
     if (cached) {
       renderTileInfo(tile, svc, span);
