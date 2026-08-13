@@ -1713,7 +1713,7 @@ function makeServiceRow(svc) {
 
   row.collect = () => {
     const updated = {
-      id: svc.id,
+      ...svc,
       name: nameInput.value.trim() || svc.name,
       url: urlInput.value.trim(),
       category: catField.value() || "Other"
@@ -2013,10 +2013,14 @@ async function saveSettings() {
   renderSettingsServices();
   renderServices();
   renderGreeting();
+  renderSettingsStats();
+  refreshStats();
   refreshPihole();
   refreshAdguard();
   refreshProxmox();
-  refreshStats();
+  refreshWeather();
+  refreshPorts();
+  refreshRss();
   toastResult(res, "Settings saved");
 }
 

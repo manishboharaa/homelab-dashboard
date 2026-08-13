@@ -314,7 +314,7 @@ jfName.value = "plex";
 updateJellyfinAddMenu();
 assert(jfBlock.classList.contains("hidden"), "add menu hidden for non-jellyfin");
 
-const rowJf = makeServiceRow({ id: "r1", name: "Jellyfin", url: "http://x", icon: null, category: "Media", size: "sm", docker: "jellyfin", type: "jellyfin", details: true, apiKey: "k" });
+const rowJf = makeServiceRow({ id: "r1", name: "Jellyfin", url: "http://x", icon: "https://icons.example/jellyfin.png", category: "Media", size: "sm", docker: "jellyfin", type: "jellyfin", details: true, apiKey: "k" });
 const extraJf = rowJf.children.find((c) => c.className === "ss-row-extra");
 assert(!!extraJf, "jellyfin row has extra row");
 assert(extraJf.children.some((c) => c.className.includes("ss-docker-input")), "jellyfin row has docker input");
@@ -327,6 +327,7 @@ assert(!!rowJfByName.children.find((c) => c.className === "ss-row-extra"), "row 
 
 const jfCollected = rowJf.collect();
 assert(jfCollected.id === "r1" && jfCollected.type === "jellyfin" && jfCollected.docker === "jellyfin", "jellyfin row collect() carries id + type + docker");
+assert(jfCollected.icon === "https://icons.example/jellyfin.png" && jfCollected.size === "sm", "collect() preserves icon + size");
 assert(!rowJf.children.some((c) => c.className.includes("ss-save")), "row has NO per-row save button");
 
 const rowP = makeServiceRow({ id: "r2", name: "Plex", url: "http://x", icon: null, category: "Media", size: "sm", docker: "", type: null, details: false, apiKey: "" });

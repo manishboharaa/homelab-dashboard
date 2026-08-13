@@ -128,7 +128,10 @@ app.put("/api/settings", (req, res) => {
   if (adguard) cfg.adguard = { ...cfg.adguard, ...adguard, url: normalizeUrl(adguard.url) };
   if (system) cfg.system = { ...cfg.system, ...system };
   if (Array.isArray(services)) {
-    cfg.services = services.map(cleanService);
+    const byId = new Map(cfg.services.map((s) => [s.id, s]));
+    cfg.services = services.map((s) =>
+      cleanService(byId.has(s.id) ? { ...byId.get(s.id), ...s } : s)
+    );
   }
   if (proxmox) cfg.proxmox = { ...cfg.proxmox, ...proxmox, url: normalizeUrl(proxmox.url) };
   writeConfig(cfg);
