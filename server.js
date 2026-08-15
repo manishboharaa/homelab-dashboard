@@ -517,14 +517,21 @@ app.get("/api/weather", async (req, res) => {
   }
   try {
     const tempUnit = unit === "celsius" ? "celsius" : "fahrenheit";
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&temperature_unit=${tempUnit}&timezone=auto`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code&forecast_days=7&temperature_unit=${tempUnit}&timezone=auto`;
     const r = await fetch(url);
     const data = await r.json();
+    const forecast = (data.daily?.time || []).map((t, i) => ({
+      date: t,
+      high: data.daily?.temperature_2m_max?.[i],
+      low: data.daily?.temperature_2m_min?.[i],
+      code: data.daily?.weather_code?.[i]
+    }));
     res.json({
       locationName: cfg.weather.locationName,
       current: data.current,
-      todayHigh: data.daily?.temperature_2m_max?.[0],
-      todayLow: data.daily?.temperature_2m_min?.[0],
+      todayHigh: forecast[0]?.high,
+      todayLow: forecast[0]?.low,
+      forecast,
       unit: tempUnit
     });
   } catch (err) {

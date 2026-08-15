@@ -875,6 +875,10 @@ const WEATHER_CODES = {
   95: "⛈️ Thunderstorm", 96: "⛈️ Thunderstorm", 99: "⛈️ Severe storm"
 };
 
+function localISODate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 async function refreshWeather() {
   const body = document.getElementById("weatherBody");
   if (!CONFIG.weather?.latitude) {
@@ -885,13 +889,32 @@ async function refreshWeather() {
     const r = await fetch("/api/weather");
     if (!r.ok) throw new Error();
     const d = await r.json();
-    const desc = WEATHER_CODES[d.current?.weather_code] || "";
+    const cur = d.current || {};
     const unitLabel = d.unit === "celsius" ? "°C" : "°F";
+    const desc = WEATHER_CODES[cur.weather_code] || "";
+    const todayISO = localISODate(new Date());
+    const days = (d.forecast || [])
+      .map((day) => {
+        const dow = new Date(day.date + "T12:00:00").toLocaleDateString([], { weekday: "short" });
+        const icon = (WEATHER_CODES[day.code] || "").split(" ")[0];
+        return `
+        <div class="wday${day.date === todayISO ? " today" : ""}">
+          <div class="wday-dow">${dow}</div>
+          <div class="wday-icon">${icon}</div>
+          <div class="wday-hi">${Math.round(day.high)}°</div>
+          <div class="wday-lo">${Math.round(day.low)}°</div>
+        </div>`;
+      })
+      .join("");
     body.innerHTML = `
-      <div class="weather-loc">${d.locationName}</div>
-      <div class="weather-temp">${Math.round(d.current?.temperature_2m)}${unitLabel}</div>
-      <div>${desc}</div>
-      <div class="weather-range">H: ${Math.round(d.todayHigh)}° &nbsp; L: ${Math.round(d.todayLow)}°</div>
+      <div class="weather-loc">${escapeHtml(d.locationName)} · Open-Meteo</div>
+      <div class="weather-now">
+        <div class="weather-temp">${Math.round(cur.temperature_2m)}${unitLabel}</div>
+        <div class="weather-desc">${desc}</div>
+        <div class="weather-range">H: ${Math.round(d.todayHigh)}° &nbsp; L: ${Math.round(d.todayLow)}°</div>
+      </div>
+      <div class="weather-meta">Feels ${Math.round(cur.apparent_temperature)}${unitLabel} · Humidity ${Math.round(cur.relative_humidity_2m)}% · Wind ${Math.round(cur.wind_speed_10m)} km/h</div>
+      <div class="weather-days">${days}</div>
     `;
   } catch {
     body.textContent = "Weather unavailable";
