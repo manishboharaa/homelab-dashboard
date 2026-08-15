@@ -805,11 +805,12 @@ input { font-family: inherit; }
   top: 16px;
   max-height: calc(100vh - 32px);
   overflow-y: auto;
-  scrollbar-width: thin;
+  scrollbar-width: none;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
+.sidebar-col::-webkit-scrollbar { display: none; }
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
