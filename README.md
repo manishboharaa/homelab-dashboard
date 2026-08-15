@@ -69,9 +69,9 @@ No account, no cloud dependency, no API keys required to get started.
 - **Everything editable later** — the ⚙️ settings panel lets you add, edit
   (name, **IP/port/URL**, category), or remove services, change your name,
   move your weather location, edit RSS feeds, and connect/disconnect
-  Pi-hole without touching a config file. Every change saves with an
-  on-screen **"Saved"** confirmation and the dashboard updates instantly —
-  no reload needed.
+  Pi-hole without touching a config file. Changes are staged per tab — hit
+  the **Save** button at the top of Settings and the dashboard updates
+  instantly, no reload needed.
 - **Resizable service tiles** — drag the bottom-right corner of any tile to
   resize it freely: wider (1 column up to the full row) and/or taller. The
   more space a tile has, the more info it shows: uptime from 2 columns,
