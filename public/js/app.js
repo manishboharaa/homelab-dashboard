@@ -289,7 +289,6 @@ async function finishSetup() {
 function initDashboard() {
   renderGreeting();
   startClock();
-  renderCalendar();
   renderServices();
   refreshStats();
   refreshWeather();
@@ -387,42 +386,6 @@ function startClock() {
   }
   tick();
   setInterval(tick, 1000);
-}
-
-function renderCalendar() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const today = now.getDate();
-
-  document.getElementById("calMonthLabel").textContent = now.toLocaleDateString([], {
-    month: "long",
-    year: "numeric"
-  });
-
-  const grid = document.getElementById("calendarGrid");
-  grid.innerHTML = "";
-  ["S", "M", "T", "W", "T", "F", "S"].forEach((d) => {
-    const el = document.createElement("div");
-    el.className = "cal-dow";
-    el.textContent = d;
-    grid.appendChild(el);
-  });
-
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  for (let i = 0; i < firstDay; i++) {
-    const el = document.createElement("div");
-    el.className = "cal-day empty";
-    grid.appendChild(el);
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    const el = document.createElement("div");
-    el.className = "cal-day" + (d === today ? " today" : "");
-    el.textContent = d;
-    grid.appendChild(el);
-  }
 }
 
 function fmtBytes(bytes) {

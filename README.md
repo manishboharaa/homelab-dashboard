@@ -62,11 +62,10 @@ No account, no cloud dependency, no API keys required to get started.
   Top Blocked / Top Allowed lists behind a toggle, for **Pi-hole** *or*
   **AdGuard Home**, with either (or both) connected from the wizard or
   Settings.
-- **Sidebar** — full-month calendar with today highlighted, an instant
-  service search, current weather for a location you set (no API key —
-  powered by [Open-Meteo](https://open-meteo.com/); °F for US locations,
-  °C everywhere else, chosen automatically), and a tech news RSS feed with
-  sensible defaults you can replace.
+- **Sidebar** — instant service search, current weather for a location you
+  set (no API key — powered by [Open-Meteo](https://open-meteo.com/); °F for
+  US locations, °C everywhere else, chosen automatically; includes a 7-day
+  forecast), and a tech news RSS feed with sensible defaults you can replace.
 - **Everything editable later** — the ⚙️ settings panel lets you add, edit
   (name, **IP/port/URL**, category), or remove services, change your name,
   move your weather location, edit RSS feeds, and connect/disconnect
@@ -188,8 +187,7 @@ main view, and everything from the wizard is editable from Settings.
 | Services grid | Your added services — click a tile to open it in a new tab; **drag** a tile to reorder the grid or move it to another category. **+ Add service** opens Settings → Services |
 | Open Ports | Every listening port on the host with process name and PID |
 | Sidebar → Search | Instantly filters the services grid as you type |
-| Sidebar → Calendar | Current month, today highlighted |
-| Sidebar → Weather | Current temp, condition, today's high/low |
+| Sidebar → Weather | Current temp, condition, today's high/low, feels-like, humidity, wind + 7-day forecast |
 | Sidebar → Tech News | Latest items from your configured RSS feeds |
 
 ## Configuration
