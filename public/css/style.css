@@ -853,7 +853,7 @@ input { font-family: inherit; }
 .wday-hi { font-size: 12px; font-weight: 600; }
 .wday-lo { font-size: 11px; color: var(--text-dim); }
 
-.rss-body { display: flex; flex-direction: column; gap: 12px; max-height: 380px; overflow-y: auto; }
+.rss-body { display: flex; flex-direction: column; gap: 12px; max-height: 560px; overflow-y: auto; }
 .rss-item { display: block; text-decoration: none; color: var(--text); border-bottom: 1px solid var(--border-soft); padding-bottom: 10px; }
 .rss-item:last-child { border-bottom: none; }
 .rss-item-title { font-size: 13px; line-height: 1.4; margin-bottom: 4px; }
