@@ -3,6 +3,11 @@ let CONFIG = null;
 const wizardSelected = new Map(); 
 let dragServiceId = null;
 let settingsPick = null;
+let activeSettingsTab = "services";
+let pendingWeather = null;
+let pendingFeeds = [];
+const stagedServices = { removedIds: new Set(), added: [] };
+const serviceEditBuffer = new Map();
 const SERVICE_CATEGORIES = ["Media","Downloads","Network","Management","Automation","Files","Security","Monitoring","Infrastructure","Dev","Productivity","Other"];
 
 
@@ -1519,6 +1524,10 @@ function refreshAllStatuses() {
 function openSettings() {
   document.getElementById("settingsModal").classList.remove("hidden");
   settingsPick = null;
+  pendingWeather = null;
+  pendingFeeds = [...(CONFIG.rss?.feeds || [])];
+  stagedServices.removedIds.clear();
+  stagedServices.added.length = 0;
   const suggestBox = document.getElementById("settingsServiceSuggest");
   if (suggestBox) suggestBox.classList.add("hidden");
   renderSettingsIconPreview();
@@ -1529,7 +1538,7 @@ function openSettings() {
   document.getElementById("settingsCurrentLocation").textContent = CONFIG.weather?.locationName
     ? `Current: ${CONFIG.weather.locationName}`
     : "No location set";
-  renderRssEditor("settingsRssList", CONFIG.rss.feeds, persistRssFeeds);
+  renderRssEditor("settingsRssList", pendingFeeds, () => updateSaveState("rss"));
   document.getElementById("settingsPiholeEnabled").checked = !!CONFIG.pihole?.enabled;
   document.getElementById("settingsPiholeUrl").value = CONFIG.pihole?.url || "";
   document.getElementById("settingsPiholeKey").value = CONFIG.pihole?.apiKey || "";
@@ -1544,6 +1553,7 @@ function openSettings() {
   document.getElementById("settingsProxmoxUrl").value = CONFIG.proxmox?.url || "";
   document.getElementById("settingsProxmoxTokenId").value = CONFIG.proxmox?.tokenId || "";
   document.getElementById("settingsProxmoxTokenSecret").value = CONFIG.proxmox?.tokenSecret || "";
+  updateSaveState(activeSettingsTab);
 }
 
 function closeSettings() {
@@ -1638,9 +1648,11 @@ function makeCategoryField(current) {
   return { select, input, value };
 }
 
-function makeServiceRow(svc) {
+function makeServiceRow(svc, opts) {
+  const isNew = !!opts?.isNew;
+  const isRemoved = !!opts?.isRemoved;
   const row = document.createElement("div");
-  row.className = "settings-service-row";
+  row.className = "settings-service-row" + (isNew ? " ss-row-new" : "") + (isRemoved ? " ss-row-removed" : "");
   row.dataset.id = svc.id;
   const iconHtml = svc.icon
     ? `<img src="${svc.icon}" onerror="this.outerHTML=letterAvatar('${escapeHtml(svc.name)}')" />`
@@ -1649,14 +1661,21 @@ function makeServiceRow(svc) {
   const top = document.createElement("div");
   top.className = "ss-row-top";
   top.innerHTML = iconHtml;
+  if (isNew) {
+    const badge = document.createElement("span");
+    badge.className = "ss-badge";
+    badge.textContent = "NEW";
+    top.appendChild(badge);
+  }
   const nameInput = document.createElement("input");
   nameInput.className = "ss-input ss-name-input";
   nameInput.value = svc.name;
   nameInput.title = "Name";
+  nameInput.disabled = isRemoved;
   const removeBtn = document.createElement("button");
-  removeBtn.className = "ss-remove";
-  removeBtn.title = "Remove";
-  removeBtn.textContent = "✕";
+  removeBtn.className = isRemoved ? "ss-restore" : "ss-remove";
+  removeBtn.title = isRemoved ? "Restore" : "Remove";
+  removeBtn.textContent = isRemoved ? "↺" : "✕";
   top.appendChild(nameInput);
   top.appendChild(removeBtn);
 
@@ -1667,7 +1686,12 @@ function makeServiceRow(svc) {
   urlInput.value = svc.url || "";
   urlInput.title = "IP and port";
   urlInput.placeholder = "http://192.168.1.50:8080";
+  urlInput.disabled = isRemoved;
   const catField = makeCategoryField(svc.category);
+  if (isRemoved) {
+    catField.select.disabled = true;
+    if (catField.input) catField.input.disabled = true;
+  }
   bottom.appendChild(urlInput);
   bottom.appendChild(catField.select);
   bottom.appendChild(catField.input);
@@ -1684,6 +1708,7 @@ function makeServiceRow(svc) {
     dockerInput.value = svc.docker || "";
     dockerInput.placeholder = "Docker container name (optional)";
     dockerInput.title = "Docker container name — real uptime when it matches and the socket is mounted";
+    dockerInput.disabled = isRemoved;
     extra.appendChild(dockerInput);
 
     const detWrap = document.createElement("label");
@@ -1691,6 +1716,7 @@ function makeServiceRow(svc) {
     detailsInput = document.createElement("input");
     detailsInput.type = "checkbox";
     detailsInput.checked = !!svc.details;
+    detailsInput.disabled = isRemoved;
     detWrap.appendChild(detailsInput);
     detWrap.appendChild(document.createTextNode(" Show extra details"));
     extra.appendChild(detWrap);
@@ -1700,6 +1726,7 @@ function makeServiceRow(svc) {
     apiKeyInput.value = svc.apiKey || "";
     apiKeyInput.placeholder = "Jellyfin API key";
     apiKeyInput.title = "Jellyfin API key — Dashboard → API Keys → Add API Key";
+    apiKeyInput.disabled = isRemoved;
     extra.appendChild(apiKeyInput);
 
     const syncKeyField = () => apiKeyInput.classList.toggle("hidden", !detailsInput.checked);
@@ -1726,21 +1753,33 @@ function makeServiceRow(svc) {
     return updated;
   };
 
-  removeBtn.addEventListener("click", async () => {
-    const res = await fetch(`/api/services/${svc.id}`, { method: "DELETE" });
-    CONFIG.services = CONFIG.services.filter((s) => s.id !== svc.id);
+  removeBtn.addEventListener("click", () => {
+    if (isNew) {
+      stagedServices.added = stagedServices.added.filter((s) => s.id !== svc.id);
+    } else if (isRemoved) {
+      stagedServices.removedIds.delete(svc.id);
+    } else {
+      stagedServices.removedIds.add(svc.id);
+    }
     renderSettingsServices();
-    renderServices();
-    toastResult(res, "Service removed");
+    updateSaveState("services");
   });
   return row;
+}
+
+function captureServiceEdits() {
+  serviceEditBuffer.clear();
+  document.querySelectorAll("#settingsServicesList .settings-service-row:not(.ss-row-new):not(.ss-row-removed)").forEach((row) => {
+    try { serviceEditBuffer.set(row.dataset.id, row.collect()); } catch {}
+  });
 }
 
 function renderSettingsServices() {
   const list = document.getElementById("settingsServicesList");
   refreshAddCategoryField();
+  captureServiceEdits();
   list.innerHTML = "";
-  if (!CONFIG.services.length) {
+  if (!CONFIG.services.length && !stagedServices.added.length) {
     const empty = document.createElement("div");
     empty.className = "ss-empty";
     empty.textContent = "No services yet — add one below.";
@@ -1749,6 +1788,11 @@ function renderSettingsServices() {
   }
   const groups = new Map();
   CONFIG.services.forEach((svc) => {
+    const cat = (svc.category || "Other").trim() || "Other";
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat).push(serviceEditBuffer.get(svc.id) || svc);
+  });
+  stagedServices.added.forEach((svc) => {
     const cat = (svc.category || "Other").trim() || "Other";
     if (!groups.has(cat)) groups.set(cat, []);
     groups.get(cat).push(svc);
@@ -1766,7 +1810,15 @@ function renderSettingsServices() {
     head.className = "ss-group-head";
     head.textContent = cat;
     list.appendChild(head);
-    groups.get(cat).forEach((svc) => list.appendChild(makeServiceRow(svc)));
+    groups.get(cat).forEach((svc) => {
+      if (stagedServices.added.some((s) => s.id === svc.id)) {
+        list.appendChild(makeServiceRow(svc, { isNew: true }));
+      } else if (stagedServices.removedIds.has(svc.id)) {
+        list.appendChild(makeServiceRow(svc, { isRemoved: true }));
+      } else {
+        list.appendChild(makeServiceRow(svc));
+      }
+    });
   });
 }
 
@@ -1850,24 +1902,15 @@ function openAddService() {
   if (nameInput) nameInput.focus();
 }
 
-async function persistRssFeeds() {
-  const res = await fetch("/api/settings", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rss: { feeds: CONFIG.rss.feeds } })
-  });
-  CONFIG = await res.json();
-  refreshRss();
-  toastResult(res, "News feeds saved");
-}
-
 function initSettingsModal() {
   document.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
       document.querySelectorAll(".tab-pane").forEach((p) => p.classList.remove("active"));
-    btn.classList.add("active");
-    document.querySelector(`.tab-pane[data-pane="${btn.dataset.tab}"]`).classList.add("active");
+      btn.classList.add("active");
+      document.querySelector(`.tab-pane[data-pane="${btn.dataset.tab}"]`).classList.add("active");
+      activeSettingsTab = btn.dataset.tab;
+      updateSaveState(activeSettingsTab);
     });
   });
 
@@ -1889,31 +1932,24 @@ function initSettingsModal() {
   const newDetails = document.getElementById("settingsNewDetails");
   newDetails?.addEventListener("change", updateJellyfinAddMenu);
 
-  document.getElementById("settingsAddService").addEventListener("click", async () => {
+  document.getElementById("settingsAddService").addEventListener("click", () => {
     const name = document.getElementById("settingsNewName").value.trim();
     const url = document.getElementById("settingsNewUrl").value.trim();
     if (!name) return;
     const catInput = document.getElementById("settingsNewCat");
     const catCustom = document.getElementById("settingsNewCatCustom");
     const usingCustom = catCustom && !catCustom.classList.contains("hidden");
-    let icon = settingsPick?.icon || null;
+    const icon = settingsPick?.icon || null;
     const category = (usingCustom ? catCustom.value.trim() : catInput?.value.trim()) || "Other";
     const isJf = name.toLowerCase() === "jellyfin";
     const details = isJf && !!newDetails?.checked;
     const apiKey = details ? (document.getElementById("settingsNewApiKey")?.value || "").trim() : "";
-    if (!icon) {
-      try {
-        const r = await fetch(`/api/resolve-icon?name=${encodeURIComponent(name)}&url=${encodeURIComponent(url)}`);
-        icon = (await r.json()).icon;
-      } catch {}
-    }
-    const res = await fetch("/api/services", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, url, icon, category, type: isJf ? "jellyfin" : null, details, apiKey })
+    stagedServices.added.push({
+      id: "new-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name, url, icon, category,
+      type: isJf ? "jellyfin" : null, details, apiKey,
+      size: 1, rows: 1
     });
-    const svc = await res.json();
-    CONFIG.services.push(svc);
     document.getElementById("settingsNewName").value = "";
     document.getElementById("settingsNewUrl").value = "";
     document.getElementById("settingsNewUrl").placeholder = "http://192.168.1.50:8080";
@@ -1927,100 +1963,238 @@ function initSettingsModal() {
     if (suggestBox) suggestBox.classList.add("hidden");
     renderSettingsIconPreview();
     renderSettingsServices();
-    renderServices();
-    toastResult(res, "Service added");
+    updateSaveState("services");
   });
 
-  document.getElementById("saveSettings").addEventListener("click", saveSettings);
+  document.getElementById("settingsSave").addEventListener("click", () => saveTab(activeSettingsTab));
 
-  setupWeatherSearch("settingsWeatherSearch", "settingsWeatherResults", async (chosen) => {
+  setupWeatherSearch("settingsWeatherSearch", "settingsWeatherResults", (chosen) => {
     const weather = {
       locationName: `${chosen.name}${chosen.admin1 ? ", " + chosen.admin1 : ""}`,
       latitude: chosen.latitude,
       longitude: chosen.longitude,
       unit: unitForCountry(chosen.country_code)
     };
-    const res = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ weather })
-    });
-    CONFIG = await res.json();
-    document.getElementById("settingsCurrentLocation").textContent = `Current: ${weather.locationName}`;
+    pendingWeather = weather;
+    document.getElementById("settingsCurrentLocation").textContent =
+      `Pending: ${weather.locationName} (not saved yet)`;
     document.getElementById("settingsWeatherResults").innerHTML = "";
-    refreshWeather();
-    toastResult(res, "Weather updated");
+    updateSaveState("weather");
   });
 
-  document.getElementById("settingsAddRss").addEventListener("click", async () => {
+  document.getElementById("settingsAddRss").addEventListener("click", () => {
     const input = document.getElementById("settingsRssInput");
     if (!input.value.trim()) return;
-    CONFIG.rss.feeds.push(input.value.trim());
+    pendingFeeds.push(input.value.trim());
     input.value = "";
-    await persistRssFeeds();
-    renderRssEditor("settingsRssList", CONFIG.rss.feeds, persistRssFeeds);
+    renderRssEditor("settingsRssList", pendingFeeds, () => updateSaveState("rss"));
+    updateSaveState("rss");
   });
 
   document.getElementById("settingsAdguardMode").addEventListener("change", () => {
     applyAdguardModeUi("settingsAdguard");
+    updateSaveState("adguard");
   });
 
   document.getElementById("settingsStatsList").addEventListener("change", (e) => {
-    if (!e.target.matches("input[type=checkbox]") || !e.target.checked) return;
-    if (document.querySelectorAll("#settingsStatsList input:checked").length > 6) {
+    if (e.target.matches("input[type=checkbox]") && e.target.checked &&
+        document.querySelectorAll("#settingsStatsList input:checked").length > 6) {
       e.target.checked = false;
       showToast("Pick up to 6 stats for the first row");
     }
+    updateSaveState("system");
   });
+
+  const bindDirty = (ids, tab) => {
+    ids.forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener(el.type === "checkbox" ? "change" : "input", () => updateSaveState(tab));
+    });
+  };
+  bindDirty(["settingsProfileName"], "profile");
+  bindDirty(["settingsPiholeEnabled", "settingsPiholeUrl", "settingsPiholeKey"], "pihole");
+  bindDirty(["settingsAdguardEnabled", "settingsAdguardUrl", "settingsAdguardUser", "settingsAdguardPass"], "adguard");
+  bindDirty(["settingsProxmoxEnabled", "settingsProxmoxUrl", "settingsProxmoxTokenId", "settingsProxmoxTokenSecret"], "proxmox");
+  const servicesList = document.getElementById("settingsServicesList");
+  if (servicesList) {
+    servicesList.addEventListener("input", () => updateSaveState("services"));
+    servicesList.addEventListener("change", () => updateSaveState("services"));
+  }
 }
 
-async function saveSettings() {
-  const payload = {
-    profile: { name: document.getElementById("settingsProfileName").value.trim() },
-    pihole: {
+function tabDirty(tab) {
+  const val = (id) => (document.getElementById(id)?.value || "");
+  const checked = (id) => !!document.getElementById(id)?.checked;
+  if (tab === "profile") {
+    return val("settingsProfileName").trim() !== (CONFIG.profile?.name || "");
+  }
+  if (tab === "pihole") {
+    return checked("settingsPiholeEnabled") !== !!CONFIG.pihole?.enabled
+      || val("settingsPiholeUrl").trim() !== (CONFIG.pihole?.url || "")
+      || val("settingsPiholeKey").trim() !== (CONFIG.pihole?.apiKey || "");
+  }
+  if (tab === "adguard") {
+    return checked("settingsAdguardEnabled") !== !!CONFIG.adguard?.enabled
+      || val("settingsAdguardUrl").trim() !== (CONFIG.adguard?.url || "")
+      || val("settingsAdguardUser").trim() !== (CONFIG.adguard?.username || "")
+      || val("settingsAdguardPass") !== (CONFIG.adguard?.password || "")
+      || val("settingsAdguardMode") !== (CONFIG.adguard?.authMode || "basic");
+  }
+  if (tab === "proxmox") {
+    return checked("settingsProxmoxEnabled") !== !!CONFIG.proxmox?.enabled
+      || val("settingsProxmoxUrl").trim() !== (CONFIG.proxmox?.url || "")
+      || val("settingsProxmoxTokenId").trim() !== (CONFIG.proxmox?.tokenId || "")
+      || val("settingsProxmoxTokenSecret") !== (CONFIG.proxmox?.tokenSecret || "");
+  }
+  if (tab === "system") {
+    const cur = [...document.querySelectorAll("#settingsStatsList input:checked")].map((i) => i.value).slice(0, 6);
+    return JSON.stringify(cur) !== JSON.stringify(pinnedStats());
+  }
+  if (tab === "weather") {
+    if (!pendingWeather) return false;
+    return pendingWeather.locationName !== (CONFIG.weather?.locationName || "")
+      || pendingWeather.latitude !== CONFIG.weather?.latitude
+      || pendingWeather.longitude !== CONFIG.weather?.longitude;
+  }
+  if (tab === "rss") {
+    return JSON.stringify(pendingFeeds) !== JSON.stringify(CONFIG.rss?.feeds || []);
+  }
+  if (tab === "services") {
+    if (stagedServices.removedIds.size > 0 || stagedServices.added.length > 0) return true;
+    const rows = [...document.querySelectorAll("#settingsServicesList .settings-service-row:not(.ss-row-new):not(.ss-row-removed)")];
+    return rows.some((row) => {
+      const svc = CONFIG.services.find((s) => s.id === row.dataset.id);
+      return svc && JSON.stringify(row.collect()) !== JSON.stringify(svc);
+    });
+  }
+  return false;
+}
+
+function updateSaveState(tab) {
+  const btn = document.getElementById("settingsSave");
+  if (!btn) return;
+  btn.dataset.tab = tab;
+  btn.classList.toggle("is-dirty", tabDirty(tab));
+}
+
+async function saveTab(tab) {
+  if (tab === "services") return saveServices();
+  if (tab === "weather") return saveWeather();
+  if (tab === "rss") return saveRss();
+  const payload = {};
+  if (tab === "profile") payload.profile = { name: document.getElementById("settingsProfileName").value.trim() };
+  if (tab === "pihole") {
+    payload.pihole = {
       enabled: document.getElementById("settingsPiholeEnabled").checked,
       url: document.getElementById("settingsPiholeUrl").value.trim(),
       apiKey: document.getElementById("settingsPiholeKey").value.trim()
-    },
-    adguard: {
+    };
+  }
+  if (tab === "adguard") {
+    payload.adguard = {
       enabled: document.getElementById("settingsAdguardEnabled").checked,
       url: document.getElementById("settingsAdguardUrl").value.trim(),
       username: document.getElementById("settingsAdguardUser").value.trim(),
       password: document.getElementById("settingsAdguardPass").value,
       authMode: document.getElementById("settingsAdguardMode").value
-    },
-    proxmox: {
+    };
+  }
+  if (tab === "proxmox") {
+    payload.proxmox = {
       enabled: document.getElementById("settingsProxmoxEnabled").checked,
       url: document.getElementById("settingsProxmoxUrl").value.trim(),
       tokenId: document.getElementById("settingsProxmoxTokenId").value.trim(),
       tokenSecret: document.getElementById("settingsProxmoxTokenSecret").value
-    },
-    system: {
+    };
+  }
+  if (tab === "system") {
+    payload.system = {
       pinnedStats: [...document.querySelectorAll("#settingsStatsList input:checked")]
         .map((i) => i.value)
         .slice(0, 6)
-    }
-  };
-  const rows = [...document.querySelectorAll("#settingsServicesList .settings-service-row")];
-  if (rows.length) payload.services = rows.map((r) => r.collect());
+    };
+  }
   const res = await fetch("/api/settings", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
   CONFIG = await res.json();
+  if (tab === "profile") renderGreeting();
+  if (tab === "pihole") refreshPihole();
+  if (tab === "adguard") { applyAdguardModeUi("settingsAdguard"); refreshAdguard(); }
+  if (tab === "proxmox") refreshProxmox();
+  if (tab === "system") { renderSettingsStats(); refreshStats(); }
+  updateSaveState(tab);
+  toastResult(res, "Saved");
+}
+
+async function saveWeather() {
+  if (!pendingWeather) return;
+  const res = await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ weather: pendingWeather })
+  });
+  CONFIG = await res.json();
+  pendingWeather = null;
+  document.getElementById("settingsCurrentLocation").textContent = CONFIG.weather?.locationName
+    ? `Current: ${CONFIG.weather.locationName}`
+    : "No location set";
+  refreshWeather();
+  updateSaveState("weather");
+  toastResult(res, "Weather saved");
+}
+
+async function saveRss() {
+  const res = await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rss: { feeds: pendingFeeds } })
+  });
+  CONFIG = await res.json();
+  pendingFeeds = [...(CONFIG.rss?.feeds || [])];
+  renderRssEditor("settingsRssList", pendingFeeds, () => updateSaveState("rss"));
+  refreshRss();
+  updateSaveState("rss");
+  toastResult(res, "News feeds saved");
+}
+
+async function saveServices() {
+  const rows = [...document.querySelectorAll("#settingsServicesList .settings-service-row")];
+  const ops = [];
+  rows.forEach((row) => {
+    if (row.classList.contains("ss-row-new")) {
+      const { id, ...rest } = row.collect();
+      ops.push(fetch("/api/services", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(rest)
+      }));
+    } else if (row.classList.contains("ss-row-removed")) {
+      ops.push(fetch(`/api/services/${row.dataset.id}`, { method: "DELETE" }));
+    } else {
+      const svc = CONFIG.services.find((s) => s.id === row.dataset.id);
+      const collected = row.collect();
+      if (svc && JSON.stringify(collected) !== JSON.stringify(svc)) {
+        ops.push(fetch(`/api/services/${row.dataset.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(collected)
+        }));
+      }
+    }
+  });
+  const results = await Promise.allSettled(ops);
+  const ok = results.every((r) => r.status === "fulfilled" && r.value.ok);
+  CONFIG = await (await fetch("/api/config")).json();
+  stagedServices.removedIds.clear();
+  stagedServices.added.length = 0;
   renderSettingsServices();
   renderServices();
-  renderGreeting();
-  renderSettingsStats();
-  refreshStats();
-  refreshPihole();
-  refreshAdguard();
-  refreshProxmox();
-  refreshWeather();
-  refreshPorts();
-  refreshRss();
-  toastResult(res, "Settings saved");
+  updateSaveState("services");
+  showToast(ok ? "Services saved" : "Some service changes failed");
 }
 
 boot();
