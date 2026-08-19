@@ -1040,6 +1040,7 @@ function makeServiceTile(svc) {
   tile.draggable = true;
   tile.dataset.id = svc.id;
   tile.dataset.span = sizeSpan(svc.size);
+  tile.classList.toggle("service-wide", Number(tile.dataset.span) >= 2);
   tile.dataset.rows = rowCount(svc.rows);
 
   const iconHtml = svc.icon
