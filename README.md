@@ -21,6 +21,7 @@ No account, no cloud dependency, no API keys required to get started.
 - [Optional: Docker container count](#optional-docker-container-count)
 - [DNS blocking stats (Pi-hole or AdGuard Home)](#dns-blocking-stats-pi-hole-or-adguard-home)
 - [Proxmox VE guests](#proxmox-ve-guests)
+- [Nginx Proxy Manager](#nginx-proxy-manager)
 - [Editing settings after setup](#editing-settings-after-setup)
 - [Manually editing config.json](#manually-editing-configjson)
 - [Updating](#updating)
@@ -73,9 +74,10 @@ No account, no cloud dependency, no API keys required to get started.
   the **Save** button at the top of Settings and the dashboard updates
   instantly, no reload needed.
 - **Resizable service tiles** — drag the bottom-right corner of any tile to
-  resize it freely: wider (1 column up to the full row) and/or taller. The
+  resize it freely: wider and/or taller. Tiles automatically cap their
+  size once all available info is displayed — no empty stretching. The
   more space a tile has, the more info it shows: uptime from 2 columns,
-  source/checked time from 2 (non-API services), detail panels from 3.
+  source/checked time from 2 (non-API services), detail panels from 3+.
   Sizes are saved per service.
 - **Per-service uptime** — tiles show uptime in days/hours/minutes. Set a
   **Docker container name** in Settings and (with the socket mounted, below)
@@ -86,6 +88,12 @@ No account, no cloud dependency, no API keys required to get started.
   episodes, active streams, libraries, users, and server version/OS. An
   optional API key in Settings unlocks the full counters (public info works
   without one).
+- **Nginx Proxy Manager panel** — connect with your NPM login email and
+  password and the tile shows proxy host counts, streams, certificates,
+  dead hosts, and the last audit log action. Info appears progressively as
+  the tile gets wider/taller. Credentials are entered in Settings →
+  Services (email + password fields appear automatically for nginx
+  services).
 - **Dark, sleek UI** — no build step, no framework, just HTML/CSS/JS
   served by a small Express app, so the Docker image stays small and easy
   to hack on.
@@ -184,6 +192,7 @@ main view, and everything from the wizard is editable from Settings.
 | Stats strip | First row shows your 6 chosen stats; click **Show all** to expand the full set: CPU, memory, swap, disk, temp, load average, network, uptime, local IP, Docker containers |
 | DNS stats | Status, queries today, blocked today, blocked %, blocklist size + a 24h graph (always visible); click the **▾** arrow for Top Clients / Top Blocked / Top Allowed, which scroll inside the panel — for Pi-hole and/or AdGuard Home (only shown if configured) |
 | Proxmox | Nodes, VMs/CTs running, total guests + a collapsible list of every VM/LXC. Click a guest's **▸** for its IP address(es), disk usage, network I/O, and uptime (only shown if configured) |
+| Nginx Proxy Manager | Proxy hosts, streams, certs, dead hosts, last audit action — info grows as the tile expands (only shown if configured with email + password) |
 | Services grid | Your added services — click a tile to open it in a new tab; **drag** a tile to reorder the grid or move it to another category. **+ Add service** opens Settings → Services |
 | Open Ports | Every listening port on the host with process name and PID |
 | Sidebar → Search | Instantly filters the services grid as you type |
@@ -204,6 +213,7 @@ here's what each piece maps to under the hood:
 | Pi-hole URL + API key | Wizard step 5, or Settings → Pi-hole | See [DNS blocking stats](#dns-blocking-stats-pi-hole-or-adguard-home) |
 | AdGuard Home URL + credentials | Wizard step 5, or Settings → AdGuard | See [DNS blocking stats](#dns-blocking-stats-pi-hole-or-adguard-home) |
 | Proxmox URL + API token | Wizard step 6 (Host type), or Settings → Proxmox | See [Proxmox VE guests](#proxmox-ve-guests) |
+| NPM login email + password | Settings → Services (nginx service row) | See [Nginx Proxy Manager](#nginx-proxy-manager) |
 | Stats shown in the first row | Settings → System Info | Pick up to 6 of the 10 stats for the collapsed first row; the rest appear behind "Show all" |
 | Timezone | `docker-compose.yml` → `TZ` | Set before first build, see below |
 | Primary disk path | `docker-compose.yml` → `HOST_DISK_PATH` | Defaults to `/hostfs`, see below |
@@ -367,6 +377,32 @@ breaks the rest of the dashboard.
 >
 > IP addresses come from PVE's container interface data, so they show for
 > LXC containers reliably (loopback and link-local addresses are hidden).
+
+## Nginx Proxy Manager
+
+If you run [Nginx Proxy Manager](https://nginxproxymanager.com/) and want
+live stats on its tile, connect it with your NPM login credentials. The
+tile progressively shows more info as it gets bigger:
+
+| Info | When it appears |
+|---|---|
+| Active proxy hosts count | Tile ≥ 2 columns wide |
+| Hosts / Streams / Certs cells | Tile ≥ 3 columns or 3 rows |
+| Dead hosts + Last audit action | Tile ≥ 4 columns or 4 rows |
+
+To set it up:
+
+1. In the NPM web UI, go to **Settings → Users** and note the email and
+   password of an admin account.
+2. In the dashboard, go to **⚙️ Settings → Services**, find your nginx
+   proxy manager service (the name must contain "nginx"), and enter the
+   **NPM login email** and **NPM password** in the fields that appear.
+   Hit **Save**.
+3. The tile will immediately show live stats fetched from the NPM API.
+
+> **Note:** The email and password are stored locally in `config.json` and
+> only used to obtain a short-lived JWT token from the NPM API. Tokens
+> are cached for 50 minutes and refreshed automatically.
 > QEMU VMs need the
 > [guest agent](https://pve.proxmox.com/wiki/Qemu-guest-agent) installed to
 > report IPs; without it the IP line shows **—**.
@@ -383,6 +419,7 @@ Click the ⚙️ icon top-right at any time to:
 - Add or remove RSS feeds
 - Connect, edit, or disable Pi-hole and AdGuard Home
 - Connect, edit, or disable Proxmox VE
+- Connect Nginx Proxy Manager (enter email + password for live stats)
 - Rearrange services by dragging tiles on the main page
 
 Changes save immediately — no restart needed.
