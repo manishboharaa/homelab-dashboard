@@ -86,9 +86,11 @@ function cleanService(s) {
     size: normalizeSize(s.size, s.type === "jellyfin" ? 6 : 1),
     rows: normalizeRows(s.rows),
     docker: s.docker || "",
-    type: s.type === "jellyfin" ? "jellyfin" : null,
+    type: s.type === "jellyfin" ? "jellyfin" : s.type === "nginx-proxy-manager" ? "nginx-proxy-manager" : null,
     details: !!s.details,
-    apiKey: s.apiKey || ""
+    apiKey: s.apiKey || "",
+    npmEmail: s.npmEmail || "",
+    npmPassword: s.npmPassword || ""
   };
 }
 
@@ -315,6 +317,68 @@ async function fetchJellyfinInfo(baseUrl, apiKey, span) {
   return out;
 }
 
+const npmTokenCache = new Map();
+
+async function getNpmToken(baseUrl, email, password) {
+  const cacheKey = baseUrl;
+  const cached = npmTokenCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.token;
+  const base = normalizeUrl(baseUrl).replace(/\/$/, "");
+  const r = await fetch(`${base}/api/tokens`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identity: email, secret: password })
+  });
+  if (!r.ok) return null;
+  const d = await r.json();
+  if (!d.token) return null;
+  npmTokenCache.set(cacheKey, { token: d.token, expiresAt: Date.now() + 50 * 60 * 1000 });
+  return d.token;
+}
+
+async function fetchNginxInfo(baseUrl, email, password, span) {
+  const base = normalizeUrl(baseUrl).replace(/\/$/, "");
+  if (!base || !email || !password) return {};
+  const token = await getNpmToken(baseUrl, email, password);
+  if (!token) return {};
+  const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
+  const out = {};
+  const [hostsR, streamsR, certsR, deadR, auditR] = await Promise.allSettled([
+    fetch(`${base}/api/nginx/proxy-hosts`, { headers }),
+    fetch(`${base}/api/nginx/streams`, { headers }),
+    fetch(`${base}/api/nginx/certificates`, { headers }),
+    fetch(`${base}/api/nginx/dead-hosts`, { headers }),
+    fetch(`${base}/api/audit-log?limit=1`, { headers })
+  ]);
+  if (hostsR.status === "fulfilled" && hostsR.value?.ok) {
+    const hosts = await hostsR.value.json();
+    if (Array.isArray(hosts)) {
+      out.proxyHosts = hosts.length;
+      out.proxyHostsEnabled = hosts.filter((h) => h.enabled).length;
+    }
+  }
+  if (streamsR.status === "fulfilled" && streamsR.value?.ok) {
+    const s = await streamsR.value.json();
+    out.streams = Array.isArray(s) ? s.length : 0;
+  }
+  if (certsR.status === "fulfilled" && certsR.value?.ok) {
+    const c = await certsR.value.json();
+    out.certificates = Array.isArray(c) ? c.length : 0;
+  }
+  if (deadR.status === "fulfilled" && deadR.value?.ok) {
+    const d = await deadR.value.json();
+    out.deadHosts = Array.isArray(d) ? d.length : 0;
+  }
+  if (auditR.status === "fulfilled" && auditR.value?.ok) {
+    const a = await auditR.value.json();
+    if (Array.isArray(a) && a.length) {
+      out.lastAction = a[0].action || null;
+      out.lastActionAt = a[0].created_on || null;
+    }
+  }
+  return out;
+}
+
 app.get("/api/services/:id/info", async (req, res) => {
   const cfg = readConfig();
   const svc = cfg.services.find((s) => s.id === req.params.id);
@@ -359,6 +423,9 @@ app.get("/api/services/:id/info", async (req, res) => {
       const rows = parseInt(req.query.rows, 10) || 1;
       const level = Math.min(6, Math.max(1, span + rows - 1));
       result.jellyfin = await fetchJellyfinInfo(svc.url, svc.apiKey, level);
+    }
+    if (svc.type === "nginx-proxy-manager" && svc.npmEmail && svc.npmPassword && svc.url) {
+      result.nginx = await fetchNginxInfo(svc.url, svc.npmEmail, svc.npmPassword);
     }
     res.json(result);
   } catch (err) {

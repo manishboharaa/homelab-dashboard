@@ -620,9 +620,12 @@ input { font-family: inherit; }
 }
 .service-tile.service-tall .service-more { flex: 1; flex-direction: column; justify-content: space-between; align-items: stretch; }
 .service-tile.service-tall .svc-cell-value { font-size: 17px; }
-.service-tile.service-tall .svc-info-grid { width: 100%; flex: 1 1 auto; }
-.service-tile.service-tall .svc-cell { flex: 1 1 0; min-width: 96px; padding: 10px 12px; }
+.service-tile.service-tall .svc-info-grid { }
+.service-tile.service-tall .svc-cell { min-width: 96px; max-width: 120px; flex: none; padding: 10px 12px; }
 .service-wide .service-more { flex-direction: column; align-items: stretch; }
+.service-wide .svc-info-grid,
+.service-wide .svc-libs,
+.service-wide .svc-meta { align-self: flex-start; }
 .service-wide .svc-cell { flex: 1 1 0; min-width: 96px; }
 .service-tile.resizing { transform: none; cursor: nwse-resize; transition: none; }
 @media (max-width: 900px) {
@@ -688,6 +691,7 @@ input { font-family: inherit; }
   border-radius: 2px;
   padding: 4px 6px;
   min-width: 60px;
+  max-width: 120px;
   text-align: center;
   display: flex;
   flex-direction: column;

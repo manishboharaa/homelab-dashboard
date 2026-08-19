@@ -1171,6 +1171,24 @@ const MAX_TILE_ROWS = 8;
 
 const INFO_TIERS = { meta: 2, counts: 3, extended: 4, libraries: 5 };
 
+function maxLevelFor(svc) {
+  if (svc && svc.type === "jellyfin" && svc.details) return INFO_TIERS.libraries;
+  if (svc && svc.type === "nginx-proxy-manager" && svc.npmEmail) return INFO_TIERS.extended;
+  return INFO_TIERS.counts;
+}
+
+function maxSpanFor(svc, rows) {
+  const r = rowCount(rows || (svc && svc.rows) || 1);
+  const ml = maxLevelFor(svc);
+  return Math.max(2, ml - Math.max(0, r - 1));
+}
+
+function maxRowsFor(svc, span) {
+  const s = sizeSpan(span || (svc && svc.size) || 1);
+  const ml = maxLevelFor(svc);
+  return Math.max(1, ml - s + 1);
+}
+
 function levelFor(span, rows) {
   return Math.min(6, Math.max(1, span + Math.max(0, rows - 1)));
 }
@@ -1205,7 +1223,8 @@ function tileColWidth(tile) {
 
 function applyRows(tile, svc, n) {
   if (!Number.isFinite(n)) n = rowCount(svc && svc.rows);
-  const rows = Math.min(MAX_TILE_ROWS, Math.max(1, n));
+  const maxR = svc ? maxRowsFor(svc, tile.dataset.span || svc.size) : MAX_TILE_ROWS;
+  const rows = Math.min(maxR, Math.max(1, n));
   tile.dataset.rows = rows;
   tile.style.setProperty("--rows", rows);
   tile.classList.toggle("service-tall", rows >= 2);
@@ -1232,11 +1251,20 @@ function normalizeTileSpans() {
     const cols = Math.max(1, Math.floor((w + GRID_GAP) / (MIN_TILE_COL + GRID_GAP)));
     grid.style.setProperty("--cols", cols);
     grid.querySelectorAll(".service-tile").forEach((tile) => {
+      const id = tile.dataset.id;
+      const svc = CONFIG.services.find(s => s.id === id);
       const span = sizeSpan(tile.dataset.span);
-      tile.style.setProperty("--tile-span", span);
-      tile.style.setProperty("--rows", tile.dataset.rows || 1);
-      tile.classList.toggle("service-tall", rowCount(tile.dataset.rows) >= 2);
-      tile.style.gridColumn = span >= cols ? "1 / -1" : `span ${span}`;
+      const max = svc ? maxSpanFor(svc, tile.dataset.rows) : span;
+      const clamped = Math.min(max, span);
+      const maxR = svc ? maxRowsFor(svc, clamped) : rowCount(tile.dataset.rows);
+      const rowsClamped = Math.min(maxR, rowCount(tile.dataset.rows));
+      tile.dataset.span = clamped;
+      tile.dataset.rows = rowsClamped;
+      tile.style.setProperty("--tile-span", clamped);
+      tile.style.setProperty("--rows", rowsClamped);
+      tile.classList.toggle("service-tall", rowsClamped >= 2);
+      tile.classList.toggle("service-wide", clamped >= 2);
+      tile.style.gridColumn = clamped >= cols ? "1 / -1" : `span ${clamped}`;
     });
   });
 }
@@ -1295,9 +1323,9 @@ function attachResize(tile, svc) {
     const colW = tileColWidth(tile);
     const cx = typeof e.clientX === "number" ? e.clientX : startX;
     const delta = Math.round((cx - startX) / colW);
-    const next = Math.min(MAX_TILE_SPAN, Math.max(1, startSpan + delta));
+    const next = Math.min(maxSpanFor(svc, rows), Math.max(1, startSpan + delta));
     const dy = (typeof e.clientY === "number" && typeof startY === "number") ? e.clientY - startY : 0;
-    const nextRows = Math.min(MAX_TILE_ROWS, Math.max(1, startRows + Math.round(dy / ROW_UNIT)));
+    const nextRows = Math.min(maxRowsFor(svc, startSpan), Math.max(1, startRows + Math.round(dy / ROW_UNIT)));
     let changed = false;
     if (nextRows !== rows) {
       rows = nextRows;
@@ -1398,6 +1426,29 @@ function renderJellyfinInfo(d, span) {
   return html;
 }
 
+function renderNginxInfo(d, n) {
+  if (!d) return `<div class="svc-info-hint">checking…</div>`;
+  const nx = d.nginx || {};
+  const bits = [];
+  if (nx.proxyHostsEnabled != null) bits.push(`${nx.proxyHostsEnabled} active`);
+  const metaLine = bits.length ? `<div class="svc-meta">${escapeHtml(bits.join(" · "))}</div>` : "";
+  if (n < INFO_TIERS.counts) return metaLine || `<div class="svc-info-hint">details unavailable</div>`;
+  const cells = [
+    { label: "Hosts", value: nx.proxyHosts },
+    { label: "Streams", value: nx.streams },
+    { label: "Certs", value: nx.certificates }
+  ];
+  if (n >= INFO_TIERS.extended) {
+    cells.push({ label: "Dead", value: nx.deadHosts ?? "—" });
+    const actionText = nx.lastAction || "—";
+    cells.push({ label: "Last", value: actionText });
+  }
+  let html = `<div class="svc-info-grid">`;
+  cells.forEach((c) => (html += svcCell(c.label, c.value)));
+  html += `</div>`;
+  return html;
+}
+
 function renderTileInfo(tile, svc, span) {
   const more = tile.querySelector(".service-more");
   if (!more) return;
@@ -1421,6 +1472,9 @@ function renderTileInfo(tile, svc, span) {
 
   if (n >= INFO_TIERS.counts && svc.type === "jellyfin" && svc.details && svc.apiKey) {
     html += `<div class="service-info">${renderJellyfinInfo(d, n)}</div>`;
+  }
+  if (n >= INFO_TIERS.counts && svc.type === "nginx-proxy-manager" && svc.npmEmail && svc.npmPassword) {
+    html += `<div class="service-info">${renderNginxInfo(d, n)}</div>`;
   }
   more.innerHTML = html;
 }
@@ -1735,6 +1789,29 @@ function makeServiceRow(svc, opts) {
     syncKeyField();
     row.appendChild(extra);
   }
+  const isNginx = svc.type === "nginx-proxy-manager" || String(svc.name || "").trim().toLowerCase().includes("nginx");
+  let npmEmailInput = null;
+  let npmPasswordInput = null;
+  if (isNginx) {
+    const extra = document.createElement("div");
+    extra.className = "ss-row-extra";
+    npmEmailInput = document.createElement("input");
+    npmEmailInput.className = "ss-input ss-api-input";
+    npmEmailInput.value = svc.npmEmail || "";
+    npmEmailInput.placeholder = "NPM login email";
+    npmEmailInput.title = "Nginx Proxy Manager email — Settings → Users";
+    npmEmailInput.disabled = isRemoved;
+    extra.appendChild(npmEmailInput);
+    npmPasswordInput = document.createElement("input");
+    npmPasswordInput.className = "ss-input ss-api-input";
+    npmPasswordInput.type = "password";
+    npmPasswordInput.value = svc.npmPassword || "";
+    npmPasswordInput.placeholder = "NPM password";
+    npmPasswordInput.title = "Nginx Proxy Manager password";
+    npmPasswordInput.disabled = isRemoved;
+    extra.appendChild(npmPasswordInput);
+    row.appendChild(extra);
+  }
   row.appendChild(top);
   row.appendChild(bottom);
 
@@ -1750,6 +1827,11 @@ function makeServiceRow(svc, opts) {
       updated.type = "jellyfin";
       updated.details = detailsInput.checked;
       updated.apiKey = detailsInput.checked ? apiKeyInput.value.trim() : "";
+    }
+    if (isNginx) {
+      updated.type = "nginx-proxy-manager";
+      updated.npmEmail = npmEmailInput.value.trim();
+      updated.npmPassword = npmPasswordInput.value.trim();
     }
     return updated;
   };
@@ -1847,6 +1929,13 @@ function updateJellyfinAddMenu() {
   if (apiRow) apiRow.classList.toggle("hidden", !(details && details.checked));
 }
 
+function updateNginxAddMenu() {
+  const block = document.getElementById("settingsNginxAdd");
+  if (!block) return;
+  const name = (document.getElementById("settingsNewName")?.value || "").trim().toLowerCase();
+  block.classList.toggle("hidden", !name.includes("nginx"));
+}
+
 function setupSettingsServiceSuggest() {
   const input = document.getElementById("settingsNewName");
   const box = document.getElementById("settingsServiceSuggest");
@@ -1861,6 +1950,7 @@ function setupSettingsServiceSuggest() {
     const q = input.value.trim().toLowerCase();
     box.innerHTML = "";
     updateJellyfinAddMenu();
+    updateNginxAddMenu();
     if (!q) {
       box.classList.add("hidden");
       return;
@@ -1943,12 +2033,16 @@ function initSettingsModal() {
     const icon = settingsPick?.icon || null;
     const category = (usingCustom ? catCustom.value.trim() : catInput?.value.trim()) || "Other";
     const isJf = name.toLowerCase() === "jellyfin";
+    const isNx = name.toLowerCase().includes("nginx");
     const details = isJf && !!newDetails?.checked;
     const apiKey = details ? (document.getElementById("settingsNewApiKey")?.value || "").trim() : "";
+    const npmEmail = isNx ? (document.getElementById("settingsNewNpmEmail")?.value || "").trim() : "";
+    const npmPassword = isNx ? (document.getElementById("settingsNewNpmPassword")?.value || "").trim() : "";
     stagedServices.added.push({
       id: "new-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       name, url, icon, category,
-      type: isJf ? "jellyfin" : null, details, apiKey,
+      type: isJf ? "jellyfin" : isNx ? "nginx-proxy-manager" : null, details, apiKey,
+      npmEmail, npmPassword,
       size: 1, rows: 1
     });
     document.getElementById("settingsNewName").value = "";
@@ -1960,6 +2054,11 @@ function initSettingsModal() {
     const apiKeyInput = document.getElementById("settingsNewApiKey");
     if (apiKeyInput) apiKeyInput.value = "";
     updateJellyfinAddMenu();
+    const npmEmailInput = document.getElementById("settingsNewNpmEmail");
+    if (npmEmailInput) npmEmailInput.value = "";
+    const npmPasswordInput = document.getElementById("settingsNewNpmPassword");
+    if (npmPasswordInput) npmPasswordInput.value = "";
+    updateNginxAddMenu();
     const suggestBox = document.getElementById("settingsServiceSuggest");
     if (suggestBox) suggestBox.classList.add("hidden");
     renderSettingsIconPreview();
