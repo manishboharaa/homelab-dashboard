@@ -941,6 +941,20 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.add("hidden"), 2200);
 }
 
+const EXPAND_MSGS = [
+  "That's all the info this service has! 🤷",
+  "Nothing more to see here, move along!",
+  "This tile is fully loaded. Like my schedule.",
+  "I'm as expanded as I can be, sorry!",
+  "No more room at the inn!",
+  "You've reached the end of the line!",
+  "This tile said: 'I have limits too!'",
+  "Maxed out! This tile needs a break.",
+];
+function showExpandLimit() {
+  showToast(EXPAND_MSGS[Math.floor(Math.random() * EXPAND_MSGS.length)]);
+}
+
 function toastResult(res, okMsg) {
   showToast(res.ok ? okMsg : "Save failed");
   return res.ok;
@@ -1041,6 +1055,7 @@ function makeServiceTile(svc) {
   tile.dataset.id = svc.id;
   tile.dataset.span = sizeSpan(svc.size);
   tile.classList.toggle("service-wide", Number(tile.dataset.span) >= 2);
+  tile.classList.toggle("no-expand", maxLevelFor(svc) <= 2);
   tile.dataset.rows = rowCount(svc.rows);
 
   const iconHtml = svc.icon
@@ -1053,10 +1068,14 @@ function makeServiceTile(svc) {
         ${iconHtml}
         <span class="service-name">${escapeHtml(svc.name)}</span>
       </div>
-      <span class="status-dot" data-url="${svc.url}"></span>
+      <div class="service-tile-right">
+        <span class="service-uptime-inline" id="uptime-${svc.id}"></span>
+        <span class="status-dot" data-url="${svc.url}"></span>
+      </div>
     </div>
-    <div class="service-ping" id="ping-${svc.id}">checking…</div>
-    <div class="service-more"></div>
+    <div class="service-more">
+      <div class="service-ping" id="ping-${svc.id}">checking…</div>
+    </div>
     <div class="resize-handle" draggable="false" title="Drag corner to resize"></div>
   `;
 
@@ -1174,19 +1193,22 @@ const INFO_TIERS = { meta: 2, counts: 3, extended: 4, libraries: 5 };
 function maxLevelFor(svc) {
   if (svc && svc.type === "jellyfin" && svc.details) return INFO_TIERS.libraries;
   if (svc && svc.type === "nginx-proxy-manager" && svc.npmEmail) return INFO_TIERS.extended;
-  return INFO_TIERS.counts;
+  if (svc && svc.type) return INFO_TIERS.counts;
+  return INFO_TIERS.meta;
 }
 
 function maxSpanFor(svc, rows) {
+  if (svc && !svc.type) return 1;
   const r = rowCount(rows || (svc && svc.rows) || 1);
   const ml = maxLevelFor(svc);
-  return Math.max(2, ml - Math.max(0, r - 1));
+  return Math.min(3, Math.max(2, ml - Math.max(0, r - 1)));
 }
 
 function maxRowsFor(svc, span) {
+  if (svc && !svc.type) return 1;
   const s = sizeSpan(span || (svc && svc.size) || 1);
   const ml = maxLevelFor(svc);
-  return Math.max(1, ml - s + 1);
+  return Math.min(4, Math.max(1, ml - s + 1));
 }
 
 function levelFor(span, rows) {
@@ -1312,6 +1334,7 @@ function attachResize(tile, svc) {
     span = startSpan;
     rows = startRows;
     tile.classList.add("resizing");
+    tile.dataset.expandMsgShown = "";
     applySpan(tile, svc, span);
     applyRows(tile, svc, rows);
     handle.setPointerCapture(e.pointerId);
@@ -1323,9 +1346,11 @@ function attachResize(tile, svc) {
     const colW = tileColWidth(tile);
     const cx = typeof e.clientX === "number" ? e.clientX : startX;
     const delta = Math.round((cx - startX) / colW);
-    const next = Math.min(maxSpanFor(svc, rows), Math.max(1, startSpan + delta));
+    const maxS = maxSpanFor(svc, rows);
+    const next = Math.min(maxS, Math.max(1, startSpan + delta));
     const dy = (typeof e.clientY === "number" && typeof startY === "number") ? e.clientY - startY : 0;
-    const nextRows = Math.min(maxRowsFor(svc, startSpan), Math.max(1, startRows + Math.round(dy / ROW_UNIT)));
+    const maxR = maxRowsFor(svc, startSpan);
+    const nextRows = Math.min(maxR, Math.max(1, startRows + Math.round(dy / ROW_UNIT)));
     let changed = false;
     if (nextRows !== rows) {
       rows = nextRows;
@@ -1337,6 +1362,11 @@ function attachResize(tile, svc) {
       applySpan(tile, svc, span, true);
       changed = true;
     }
+    if (!changed && (delta > 0 || Math.round(dy / ROW_UNIT) > 0) && !tile.dataset.expandMsgShown) {
+      tile.dataset.expandMsgShown = "1";
+      showExpandLimit();
+    }
+    if (changed) tile.dataset.expandMsgShown = "";
     if (changed) previewRender();
     queueInfoFetch();
   });
@@ -1457,7 +1487,6 @@ function renderTileInfo(tile, svc, span) {
   const cached = serviceInfoCache.get(svc.id);
   const d = cached ? cached.data : null;
 
-  let html = "";
   let upLine = `<span class="svc-check">checking…</span>`;
   if (d) {
     if (d.up && d.uptimeSec != null) {
@@ -1468,6 +1497,10 @@ function renderTileInfo(tile, svc, span) {
       upLine = `<span class="svc-down">down</span>`;
     }
   }
+  const uptimeInline = tile.querySelector(".service-uptime-inline");
+  if (uptimeInline) uptimeInline.innerHTML = upLine;
+  const pingEl = more.querySelector(".service-ping");
+  let html = pingEl ? pingEl.outerHTML : "";
   html += `<div class="service-uptime">${upLine}</div>`;
 
   if (n >= INFO_TIERS.counts && svc.type === "jellyfin" && svc.details && svc.apiKey) {
