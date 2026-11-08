@@ -76,6 +76,25 @@ function normalizeRows(rows) {
   return Number.isFinite(n) ? Math.min(8, Math.max(1, n)) : 1;
 }
 
+function cleanWidgetConfig(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const metrics = Array.isArray(value.metrics)
+    ? value.metrics.slice(0, 8).map((metric) => ({
+        label: String(metric?.label || "").trim().slice(0, 40),
+        path: String(metric?.path || "").trim().slice(0, 160)
+      })).filter((metric) => metric.label && metric.path)
+    : [];
+  return {
+    endpoint: String(value.endpoint || "").trim().slice(0, 500),
+    authHeader: String(value.authHeader || "").trim().slice(0, 80),
+    authValue: String(value.authValue || "").trim().slice(0, 500),
+    username: String(value.username || "").trim().slice(0, 200),
+    password: String(value.password || "").slice(0, 500),
+    token: String(value.token || "").trim().slice(0, 500),
+    metrics
+  };
+}
+
 function cleanService(s) {
   return {
     id: s.id || crypto.randomUUID(),
@@ -86,9 +105,11 @@ function cleanService(s) {
     size: normalizeSize(s.size, s.type === "jellyfin" ? 6 : 1),
     rows: normalizeRows(s.rows),
     docker: s.docker || "",
-    type: s.type === "jellyfin" ? "jellyfin" : s.type === "nginx-proxy-manager" ? "nginx-proxy-manager" : null,
+    type: ["jellyfin", "nginx-proxy-manager", "immich", "custom-api", "nextcloud", "sonarr", "radarr", "lidarr", "prowlarr", "qbittorrent"].includes(s.type) ? s.type : null,
     details: !!s.details,
     apiKey: s.apiKey || "",
+    widgetFields: Array.isArray(s.widgetFields) ? s.widgetFields.filter((x) => typeof x === "string") : [],
+    widgetConfig: cleanWidgetConfig(s.widgetConfig),
     npmEmail: s.npmEmail || "",
     npmPassword: s.npmPassword || ""
   };
@@ -153,7 +174,11 @@ app.post("/api/services", (req, res) => {
     docker: req.body.docker,
     type: req.body.type,
     details: req.body.details,
-    apiKey: req.body.apiKey
+    apiKey: req.body.apiKey,
+    widgetFields: req.body.widgetFields,
+    widgetConfig: req.body.widgetConfig,
+    npmEmail: req.body.npmEmail,
+    npmPassword: req.body.npmPassword
   });
   cfg.services.push(svc);
   writeConfig(cfg);
@@ -239,7 +264,7 @@ const jellyfinAgent = new https.Agent({ rejectUnauthorized: false });
 function jellyfinRequest(baseUrl, apiKey, agent) {
   const o = { timeout: PROBE_TIMEOUT };
   if (/^https:/i.test(baseUrl)) o.agent = agent;
-  if (apiKey) o.headers = { "X-Emby-Token": apiKey };
+  if (apiKey) o.headers = { Authorization: `MediaBrowser Token=${apiKey}` };
   return o;
 }
 
@@ -281,7 +306,29 @@ async function fetchJellyfinInfo(baseUrl, apiKey, span) {
   }
   if (apiKey && sessions.status === "fulfilled" && sessions.value && sessions.value.ok) {
     const s = await sessions.value.json();
-    out.activeSessions = Array.isArray(s) ? s.filter((x) => x && x.NowPlayingItem).length : null;
+    const playing = Array.isArray(s) ? s.filter((x) => x && x.NowPlayingItem) : [];
+    out.activeSessions = Array.isArray(s) ? playing.length : null;
+    out.nowPlaying = playing.slice(0, 3).map((x) => {
+      const item = x.NowPlayingItem || {};
+      const ticks = Number(item.RunTimeTicks);
+      const position = Number(x.PlayState?.PositionTicks);
+      const progressPct = Number.isFinite(ticks) && ticks > 0 && Number.isFinite(position)
+        ? Math.min(100, Math.max(0, Math.round((position / ticks) * 100)))
+        : null;
+      return {
+        title: item.Name || null,
+        seriesName: item.SeriesName || null,
+        user: x.UserName || null,
+        type: item.Type || null,
+        progressPct,
+        paused: !!x.PlayState?.IsPaused
+      };
+    });
+  }
+  if (apiKey && [counts, sessions, folders, users].some((r) => r.status === "fulfilled" && r.value?.status === 401)) {
+    out.authError = "invalid-api-key";
+  } else if (!apiKey) {
+    out.authError = "missing-api-key";
   }
   if (apiKey && users.status === "fulfilled" && users.value && users.value.ok) {
     const u = await users.value.json();
@@ -379,6 +426,128 @@ async function fetchNginxInfo(baseUrl, email, password, span) {
   return out;
 }
 
+async function fetchImmichInfo(baseUrl, apiKey) {
+  const base = normalizeUrl(baseUrl).replace(/\/$/, "");
+  if (!base) return {};
+  if (!apiKey) return { authError: "missing-api-key" };
+  const r = await fetch(`${base}/api/server/statistics`, {
+    headers: { "x-api-key": apiKey },
+    timeout: PROBE_TIMEOUT
+  });
+  if (r.status === 401 || r.status === 403) return { authError: "invalid-api-key" };
+  if (!r.ok) return { error: `Immich returned HTTP ${r.status}` };
+  const d = await r.json();
+  return {
+    users: d.users != null ? d.users : null,
+    photos: d.photos != null ? d.photos : null,
+    videos: d.videos != null ? d.videos : null,
+    storageBytes: d.usage != null ? Number(d.usage) : null
+  };
+}
+
+function readJsonPath(value, path) {
+  return String(path || "").split(".").filter(Boolean).reduce((current, key) => current == null ? undefined : current[key], value);
+}
+
+async function fetchCustomApiInfo(baseUrl, widgetConfig) {
+  const base = normalizeUrl(baseUrl).replace(/\/$/, "");
+  const endpoint = String(widgetConfig?.endpoint || "").trim();
+  if (!base || !endpoint) return { error: "Custom API endpoint is not configured" };
+  const target = /^https?:\/\//i.test(endpoint) ? endpoint : `${base}/${endpoint.replace(/^\//, "")}`;
+  const headers = {};
+  if (widgetConfig.authHeader && widgetConfig.authValue) headers[widgetConfig.authHeader] = widgetConfig.authValue;
+  const response = await fetch(target, { headers, timeout: PROBE_TIMEOUT });
+  if (response.status === 401 || response.status === 403) return { authError: "invalid-credentials" };
+  if (!response.ok) return { error: `Custom API returned HTTP ${response.status}` };
+  const payload = await response.json();
+  return {
+    metrics: (widgetConfig.metrics || []).map((metric) => ({
+      label: metric.label,
+      value: readJsonPath(payload, metric.path)
+    }))
+  };
+}
+
+async function fetchNextcloudInfo(baseUrl, widgetConfig) {
+  const base = normalizeUrl(baseUrl).replace(/\/$/, "");
+  if (!base) return {};
+  const headers = { "OCS-APIRequest": "true", Accept: "application/json" };
+  if (widgetConfig.token) headers["NC-Token"] = widgetConfig.token;
+  else if (widgetConfig.username && widgetConfig.password) {
+    headers.Authorization = `Basic ${Buffer.from(`${widgetConfig.username}:${widgetConfig.password}`).toString("base64")}`;
+  } else return { authError: "missing-credentials" };
+  const response = await fetch(`${base}/ocs/v2.php/apps/serverinfo/api/v1/info`, { headers, timeout: PROBE_TIMEOUT });
+  if (response.status === 401 || response.status === 403) return { authError: "invalid-credentials" };
+  if (!response.ok) return { error: `Nextcloud returned HTTP ${response.status}` };
+  const payload = await response.json();
+  const data = payload?.ocs?.data || payload?.data || {};
+  return {
+    cpuLoad: data.cpuload ?? data.cpuLoad ?? null,
+    memoryUsage: data.memoryusage ?? data.memoryUsage ?? null,
+    freeSpace: data.freespace ?? data.freeSpace ?? null,
+    activeUsers: data.activeUsers ?? data.activeusers ?? null,
+    files: data.numFiles ?? data.numfiles ?? null,
+    shares: data.numShares ?? data.numshares ?? null
+  };
+}
+
+async function fetchArrInfo(baseUrl, apiKey, type) {
+  const base = normalizeUrl(baseUrl).replace(/\/$/, "");
+  if (!base || !apiKey) return { authError: apiKey ? null : "missing-api-key" };
+  const headers = { "X-Api-Key": apiKey };
+  if (type === "prowlarr") {
+    const response = await fetch(`${base}/api/v1/indexer`, { headers, timeout: PROBE_TIMEOUT });
+    if (response.status === 401 || response.status === 403) return { authError: "invalid-api-key" };
+    if (!response.ok) return { error: `Prowlarr returned HTTP ${response.status}` };
+    const indexers = await response.json();
+    return { indexers: Array.isArray(indexers) ? indexers.length : null, libraryLabel: "Indexers" };
+  }
+  const resource = type === "sonarr" ? "series" : type === "radarr" ? "movie" : "artist";
+  const [wanted, queue, library] = await Promise.allSettled([
+    fetch(`${base}/api/v3/wanted/missing?page=1&pageSize=1`, { headers, timeout: PROBE_TIMEOUT }),
+    fetch(`${base}/api/v3/queue?page=1&pageSize=1`, { headers, timeout: PROBE_TIMEOUT }),
+    fetch(`${base}/api/v3/${resource}`, { headers, timeout: PROBE_TIMEOUT })
+  ]);
+  if ([wanted, queue, library].some((item) => item.status === "fulfilled" && [401, 403].includes(item.value.status))) {
+    return { authError: "invalid-api-key" };
+  }
+  const readJson = async (item) => item.status === "fulfilled" && item.value.ok ? item.value.json() : null;
+  const [wantedData, queueData, libraryData] = await Promise.all([readJson(wanted), readJson(queue), readJson(library)]);
+  return {
+    wanted: wantedData?.totalRecords ?? null,
+    queued: queueData?.totalRecords ?? (Array.isArray(queueData) ? queueData.length : null),
+    library: Array.isArray(libraryData) ? libraryData.length : null,
+    libraryLabel: type === "sonarr" ? "Series" : type === "radarr" ? "Movies" : "Artists"
+  };
+}
+
+async function fetchQbittorrentInfo(baseUrl, widgetConfig) {
+  const base = normalizeUrl(baseUrl).replace(/\/$/, "");
+  if (!base || !widgetConfig.username || !widgetConfig.password) return { authError: "missing-credentials" };
+  const login = await fetch(`${base}/api/v2/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ username: widgetConfig.username, password: widgetConfig.password }).toString(),
+    timeout: PROBE_TIMEOUT
+  });
+  if (!login.ok) return { authError: "invalid-credentials" };
+  const cookie = login.headers.get("set-cookie");
+  const headers = cookie ? { Cookie: cookie.split(";")[0] } : {};
+  const [transfer, torrents] = await Promise.all([
+    fetch(`${base}/api/v2/transfer/info`, { headers, timeout: PROBE_TIMEOUT }),
+    fetch(`${base}/api/v2/torrents/info`, { headers, timeout: PROBE_TIMEOUT })
+  ]);
+  if ([transfer, torrents].some((response) => response.status === 401 || response.status === 403)) return { authError: "invalid-credentials" };
+  if (!transfer.ok || !torrents.ok) return { error: "qBittorrent API request failed" };
+  const [t, list] = await Promise.all([transfer.json(), torrents.json()]);
+  return {
+    download: t.dl_info_speed ?? null,
+    upload: t.up_info_speed ?? null,
+    seed: Array.isArray(list) ? list.filter((item) => item.state === "uploading" || item.state === "stalledup").length : null,
+    leech: Array.isArray(list) ? list.filter((item) => item.state === "downloading" || item.state === "stalledDL").length : null
+  };
+}
+
 app.get("/api/services/:id/info", async (req, res) => {
   const cfg = readConfig();
   const svc = cfg.services.find((s) => s.id === req.params.id);
@@ -426,6 +595,24 @@ app.get("/api/services/:id/info", async (req, res) => {
     }
     if (svc.type === "nginx-proxy-manager" && svc.npmEmail && svc.npmPassword && svc.url) {
       result.nginx = await fetchNginxInfo(svc.url, svc.npmEmail, svc.npmPassword);
+    }
+    if (svc.type === "immich" && svc.details && svc.url) {
+      result.immich = await fetchImmichInfo(svc.url, svc.apiKey);
+    }
+    if (svc.type === "custom-api" && svc.details && svc.url) {
+      result.customApi = await fetchCustomApiInfo(svc.url, svc.widgetConfig);
+    }
+    if (svc.type === "nextcloud" && svc.details && svc.url) {
+      result.nextcloud = await fetchNextcloudInfo(svc.url, svc.widgetConfig);
+    }
+    if ((svc.type === "sonarr" || svc.type === "radarr") && svc.details && svc.url) {
+      result.arr = await fetchArrInfo(svc.url, svc.apiKey, svc.type);
+    }
+    if ((svc.type === "lidarr" || svc.type === "prowlarr") && svc.details && svc.url) {
+      result.arr = await fetchArrInfo(svc.url, svc.apiKey, svc.type);
+    }
+    if (svc.type === "qbittorrent" && svc.details && svc.url) {
+      result.qbittorrent = await fetchQbittorrentInfo(svc.url, svc.widgetConfig);
     }
     res.json(result);
   } catch (err) {

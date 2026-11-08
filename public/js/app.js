@@ -1132,6 +1132,8 @@ function makeServiceTile(svc) {
 const serviceInfoCache = new Map();
 
 async function fetchServiceInfo(svc, span, rows) {
+  const requestId = (infoRequestSeq.get(svc.id) || 0) + 1;
+  infoRequestSeq.set(svc.id, requestId);
   try {
     const s = span || sizeSpan(svc.size);
     const r = rows != null ? rows : rowCount(svc.rows);
@@ -1140,6 +1142,7 @@ async function fetchServiceInfo(svc, span, rows) {
     const res = await fetch(`/api/services/${svc.id}/info${q}`);
     if (!res.ok) return null;
     const data = await res.json();
+    if (infoRequestSeq.get(svc.id) !== requestId) return null;
     serviceInfoCache.set(svc.id, { data, at: Date.now(), level });
     return data;
   } catch {
@@ -1193,6 +1196,7 @@ const INFO_TIERS = { meta: 2, counts: 3, extended: 4, libraries: 5 };
 function maxLevelFor(svc) {
   if (svc && svc.type === "jellyfin" && svc.details) return INFO_TIERS.libraries;
   if (svc && svc.type === "nginx-proxy-manager" && svc.npmEmail) return INFO_TIERS.extended;
+  if (svc && svc.type === "immich" && svc.details) return INFO_TIERS.counts;
   if (svc && svc.type) return INFO_TIERS.counts;
   return INFO_TIERS.meta;
 }
@@ -1408,55 +1412,83 @@ function svcCell(label, value) {
   return `<div class="svc-cell"><div class="svc-cell-value">${escapeHtml(String(v))}</div><div class="svc-cell-label">${escapeHtml(String(label))}</div></div>`;
 }
 
-function renderJellyfinInfo(d, span) {
+function renderNowPlaying(items) {
+  if (!Array.isArray(items)) return "";
+  const playing = items.filter((item) => item && item.title);
+  const content = playing.length
+    ? playing
+    .map((item) => {
+      const title = item.seriesName && item.seriesName !== item.title
+        ? `${item.seriesName} · ${item.title}`
+        : item.title;
+      const details = [item.user, item.type, item.progressPct != null ? `${item.progressPct}%` : null, item.paused ? "paused" : null]
+        .filter(Boolean)
+        .join(" · ");
+      return `<div class="svc-playing-row"><div class="svc-playing-title">${escapeHtml(title)}</div>${details ? `<div class="svc-playing-meta">${escapeHtml(details)}</div>` : ""}</div>`;
+    })
+    .join("")
+    : `<div class="svc-widget-empty">Nothing playing</div>`;
+  return `<section class="svc-widget-section svc-now-playing"><div class="svc-widget-section-title">Now playing</div>${content}</section>`;
+}
+
+function widgetFieldEnabled(fields, key) {
+  return !Array.isArray(fields) || !fields.length || fields.includes(key);
+}
+
+function renderJellyfinInfo(d, span, fields) {
   if (!d) return `<div class="svc-info-hint">checking…</div>`;
   const jf = d.jellyfin || {};
   const n = span || 3;
-  const bits = [jf.os, jf.version, jf.arch].filter(Boolean);
-  const name = jf.serverName || "Jellyfin";
-  const metaLine = bits.length ? `<div class="svc-meta">${escapeHtml(name)} · ${escapeHtml(bits.join(" · "))}</div>` : "";
+
+  if (jf.authError === "invalid-api-key") {
+    return `<div class="svc-widget-error">Jellyfin API key rejected · update it in Settings</div>`;
+  }
+  if (jf.authError === "missing-api-key") {
+    return `<div class="svc-widget-error">Add a Jellyfin API key in Settings to show library data</div>`;
+  }
 
   if (n < INFO_TIERS.counts) {
-    if (!jf.serverName && !jf.version) return `<div class="svc-info-hint">details unavailable</div>`;
-    return metaLine;
+    return `<div class="svc-info-hint">expand for library metrics</div>`;
   }
 
   const cells = [
-    { label: "Movies", value: jf.movies },
-    { label: "Series", value: jf.series },
-    { label: "Episodes", value: jf.episodes },
-    { label: "Streaming", value: jf.activeSessions },
-    { label: "Users", value: jf.users }
+    { key: "movies", label: "Movies", value: jf.movies },
+    { key: "series", label: "Series", value: jf.series },
+    { key: "episodes", label: "Episodes", value: jf.episodes },
+    { key: "streaming", label: "Streaming", value: jf.activeSessions },
+    { key: "users", label: "Users", value: jf.users }
   ];
-  const haveCounts = cells.some((c) => c.value != null);
-  if (!haveCounts && !jf.serverName && !jf.version) {
+  const visibleCells = cells.filter((c) => widgetFieldEnabled(fields, c.key));
+  const haveCounts = visibleCells.some((c) => c.value != null);
+  if (!haveCounts) {
     return `<div class="svc-info-hint">details unavailable</div>`;
   }
 
-  let html = `<div class="svc-info-grid">`;
+  let html = `<section class="svc-widget-section"><div class="svc-widget-section-title">Library</div><div class="svc-info-grid">`;
   if (haveCounts) {
-    cells.forEach((c) => (html += svcCell(c.label, c.value)));
-    if (n >= INFO_TIERS.extended && jf.songs > 0) {
+    visibleCells.forEach((c) => (html += svcCell(c.label, c.value)));
+    if (n >= INFO_TIERS.extended && jf.songs > 0 && widgetFieldEnabled(fields, "songs")) {
       html += svcCell("Songs", jf.songs);
     }
   } else {
     html += `<div class="svc-cell wide"><div class="svc-cell-value">${escapeHtml(name)}</div><div class="svc-cell-label">server</div></div>`;
   }
-  html += `</div>`;
+  html += `</div></section>`;
 
-  if (n >= INFO_TIERS.libraries && Array.isArray(jf.libraryTotals)) {
-    html += `<div class="svc-libs">${jf.libraryTotals
+  if (widgetFieldEnabled(fields, "nowPlaying")) html += renderNowPlaying(jf.nowPlaying);
+
+  if (n >= INFO_TIERS.libraries && Array.isArray(jf.libraryTotals) && widgetFieldEnabled(fields, "libraries")) {
+    html += `<section class="svc-widget-section"><div class="svc-widget-section-title">Libraries</div><div class="svc-libs">${jf.libraryTotals
       .map(
         (l) =>
           `<div class="svc-lib"><span class="svc-lib-name">${escapeHtml(l.name || "")}</span><span class="svc-lib-count">${l.count != null ? l.count : "—"}</span></div>`
       )
-      .join("")}</div>`;
+      .join("")}</div></section>`;
   }
-  html += metaLine;
   return html;
 }
 
-function renderNginxInfo(d, n) {
+function renderNginxInfo(d, n, fields) {
   if (!d) return `<div class="svc-info-hint">checking…</div>`;
   const nx = d.nginx || {};
   const bits = [];
@@ -1464,19 +1496,95 @@ function renderNginxInfo(d, n) {
   const metaLine = bits.length ? `<div class="svc-meta">${escapeHtml(bits.join(" · "))}</div>` : "";
   if (n < INFO_TIERS.counts) return metaLine || `<div class="svc-info-hint">details unavailable</div>`;
   const cells = [
-    { label: "Hosts", value: nx.proxyHosts },
-    { label: "Streams", value: nx.streams },
-    { label: "Certs", value: nx.certificates }
+    { key: "hosts", label: "Hosts", value: nx.proxyHosts },
+    { key: "streams", label: "Streams", value: nx.streams },
+    { key: "certificates", label: "Certs", value: nx.certificates }
   ];
   if (n >= INFO_TIERS.extended) {
-    cells.push({ label: "Dead", value: nx.deadHosts ?? "—" });
+    cells.push({ key: "deadHosts", label: "Dead", value: nx.deadHosts ?? "—" });
     const actionText = nx.lastAction || "—";
-    cells.push({ label: "Last", value: actionText });
+    cells.push({ key: "lastAction", label: "Last", value: actionText });
   }
-  let html = `<div class="svc-info-grid">`;
-  cells.forEach((c) => (html += svcCell(c.label, c.value)));
-  html += `</div>`;
+  const visibleCells = cells.filter((c) => widgetFieldEnabled(fields, c.key));
+  let html = `<section class="svc-widget-section"><div class="svc-widget-section-title">Proxy activity</div><div class="svc-info-grid">`;
+  visibleCells.forEach((c) => (html += svcCell(c.label, c.value)));
+  html += `</div></section>`;
   return html;
+}
+
+function renderImmichInfo(d, fields) {
+  if (!d) return `<div class="svc-info-hint">checking…</div>`;
+  const im = d.immich || {};
+  if (im.authError === "invalid-api-key") return `<div class="svc-widget-error">Immich API key rejected · update it in Settings</div>`;
+  if (im.authError === "missing-api-key") return `<div class="svc-widget-error">Add an Immich API key in Settings to show statistics</div>`;
+  if (im.error) return `<div class="svc-widget-error">${escapeHtml(im.error)}</div>`;
+  return `<section class="svc-widget-section"><div class="svc-widget-section-title">Library statistics</div><div class="svc-info-grid">${[
+    { key: "users", label: "Users", value: im.users },
+    { key: "photos", label: "Photos", value: im.photos },
+    { key: "videos", label: "Videos", value: im.videos },
+    { key: "storage", label: "Storage", value: im.storageBytes != null ? fmtBytes(im.storageBytes) : null }
+  ].filter((c) => widgetFieldEnabled(fields, c.key)).map((c) => svcCell(c.label, c.value)).join("")}</div></section>`;
+}
+
+function renderCustomApiInfo(d) {
+  if (!d) return `<div class="svc-info-hint">checking…</div>`;
+  const api = d.customApi || {};
+  if (api.authError) return `<div class="svc-widget-error">Custom API credentials rejected</div>`;
+  if (api.error) return `<div class="svc-widget-error">${escapeHtml(api.error)}</div>`;
+  const metrics = Array.isArray(api.metrics) ? api.metrics : [];
+  if (!metrics.length) return `<div class="svc-info-hint">No custom metrics configured</div>`;
+  return `<section class="svc-widget-section"><div class="svc-widget-section-title">Custom API</div><div class="svc-info-grid">${metrics
+    .map((metric) => svcCell(metric.label, metric.value == null ? "—" : typeof metric.value === "object" ? JSON.stringify(metric.value) : metric.value))
+    .join("")}</div></section>`;
+}
+
+function renderNextcloudInfo(d, fields) {
+  if (!d) return `<div class="svc-info-hint">checking…</div>`;
+  const nc = d.nextcloud || {};
+  if (nc.authError === "missing-credentials") return `<div class="svc-widget-error">Add a Nextcloud token or username and password in Settings</div>`;
+  if (nc.authError === "invalid-credentials") return `<div class="svc-widget-error">Nextcloud credentials rejected</div>`;
+  if (nc.error) return `<div class="svc-widget-error">${escapeHtml(nc.error)}</div>`;
+  const cells = [
+    { key: "freeSpace", label: "Free space", value: nc.freeSpace != null ? fmtBytes(nc.freeSpace) : null },
+    { key: "activeUsers", label: "Active users", value: nc.activeUsers },
+    { key: "files", label: "Files", value: nc.files },
+    { key: "shares", label: "Shares", value: nc.shares }
+  ].filter((cell) => widgetFieldEnabled(fields, cell.key));
+  return `<section class="svc-widget-section"><div class="svc-widget-section-title">Nextcloud</div><div class="svc-info-grid">${cells.map((cell) => svcCell(cell.label, cell.value)).join("")}</div></section>`;
+}
+
+function renderArrInfo(d, fields) {
+  if (!d) return `<div class="svc-info-hint">checking…</div>`;
+  const arr = d.arr || {};
+  if (arr.authError === "missing-api-key") return `<div class="svc-widget-error">Add an API key in Settings</div>`;
+  if (arr.authError === "invalid-api-key") return `<div class="svc-widget-error">API key rejected</div>`;
+  const cells = [
+    { key: "wanted", label: "Wanted", value: arr.wanted },
+    { key: "queued", label: "Queued", value: arr.queued },
+    { key: arr.libraryLabel === "Series" ? "series" : arr.libraryLabel === "Artists" ? "artists" : "movies", label: arr.libraryLabel || "Library", value: arr.library },
+    { key: "indexers", label: "Indexers", value: arr.indexers }
+  ].filter((cell) => widgetFieldEnabled(fields, cell.key));
+  return `<section class="svc-widget-section"><div class="svc-widget-section-title">${escapeHtml(arr.libraryLabel || "Library")}</div><div class="svc-info-grid">${cells.map((cell) => svcCell(cell.label, cell.value)).join("")}</div></section>`;
+}
+
+function formatRate(value) {
+  if (value == null) return "—";
+  return `${fmtBytes(value)}/s`;
+}
+
+function renderQbittorrentInfo(d, fields) {
+  if (!d) return `<div class="svc-info-hint">checking…</div>`;
+  const qb = d.qbittorrent || {};
+  if (qb.authError === "missing-credentials") return `<div class="svc-widget-error">Add qBittorrent WebUI credentials in Settings</div>`;
+  if (qb.authError === "invalid-credentials") return `<div class="svc-widget-error">qBittorrent credentials rejected</div>`;
+  if (qb.error) return `<div class="svc-widget-error">${escapeHtml(qb.error)}</div>`;
+  const cells = [
+    { key: "download", label: "Download", value: formatRate(qb.download) },
+    { key: "upload", label: "Upload", value: formatRate(qb.upload) },
+    { key: "seed", label: "Seeding", value: qb.seed },
+    { key: "leech", label: "Leeching", value: qb.leech }
+  ].filter((cell) => widgetFieldEnabled(fields, cell.key));
+  return `<section class="svc-widget-section"><div class="svc-widget-section-title">qBittorrent</div><div class="svc-info-grid">${cells.map((cell) => svcCell(cell.label, cell.value)).join("")}</div></section>`;
 }
 
 function renderTileInfo(tile, svc, span) {
@@ -1503,11 +1611,29 @@ function renderTileInfo(tile, svc, span) {
   let html = pingEl ? pingEl.outerHTML : "";
   html += `<div class="service-uptime">${upLine}</div>`;
 
-  if (n >= INFO_TIERS.counts && svc.type === "jellyfin" && svc.details && svc.apiKey) {
-    html += `<div class="service-info">${renderJellyfinInfo(d, n)}</div>`;
+  if (n >= INFO_TIERS.counts && svc.type === "jellyfin" && svc.details) {
+    html += `<div class="service-info">${renderJellyfinInfo(d, n, svc.widgetFields)}</div>`;
   }
   if (n >= INFO_TIERS.counts && svc.type === "nginx-proxy-manager" && svc.npmEmail && svc.npmPassword) {
-    html += `<div class="service-info">${renderNginxInfo(d, n)}</div>`;
+    html += `<div class="service-info">${renderNginxInfo(d, n, svc.widgetFields)}</div>`;
+  }
+  if (n >= INFO_TIERS.counts && svc.type === "immich" && svc.details) {
+    html += `<div class="service-info">${renderImmichInfo(d, svc.widgetFields)}</div>`;
+  }
+  if (n >= INFO_TIERS.counts && svc.type === "custom-api" && svc.details) {
+    html += `<div class="service-info">${renderCustomApiInfo(d)}</div>`;
+  }
+  if (n >= INFO_TIERS.counts && svc.type === "nextcloud" && svc.details) {
+    html += `<div class="service-info">${renderNextcloudInfo(d, svc.widgetFields)}</div>`;
+  }
+  if ((svc.type === "sonarr" || svc.type === "radarr") && svc.details) {
+    html += `<div class="service-info">${renderArrInfo(d, svc.widgetFields)}</div>`;
+  }
+  if ((svc.type === "lidarr" || svc.type === "prowlarr") && svc.details) {
+    html += `<div class="service-info">${renderArrInfo(d, svc.widgetFields)}</div>`;
+  }
+  if (svc.type === "qbittorrent" && svc.details) {
+    html += `<div class="service-info">${renderQbittorrentInfo(d, svc.widgetFields)}</div>`;
   }
   more.innerHTML = html;
 }
@@ -1559,6 +1685,8 @@ function letterAvatar(name) {
 window.letterAvatar = letterAvatar;
 
 const statusCache = new Map();
+const statusRequestSeq = new WeakMap();
+const infoRequestSeq = new Map();
 
 function applyStatus(dotEl, url, pingEl, res) {
   const online = !!res.ok;
@@ -1585,16 +1713,20 @@ function checkStatus(dotEl, url, pingEl, force) {
   }
   const target = /^https?:\/\//i.test(url) ? url : `http://${url}`;
   const controller = new AbortController();
+  const requestId = (statusRequestSeq.get(dotEl) || 0) + 1;
+  statusRequestSeq.set(dotEl, requestId);
   const timeout = setTimeout(() => controller.abort(), 3000);
   const start = performance.now();
   return fetch(target, { mode: "no-cors", signal: controller.signal })
     .then(() => {
       const res = { ok: true, ms: Math.round(performance.now() - start), at: Date.now() };
+      if (statusRequestSeq.get(dotEl) !== requestId) return;
       statusCache.set(key, res);
       applyStatus(dotEl, url, pingEl, res);
     })
     .catch(() => {
       const res = { ok: false, ms: null, at: Date.now() };
+      if (statusRequestSeq.get(dotEl) !== requestId) return;
       statusCache.set(key, res);
       applyStatus(dotEl, url, pingEl, res);
     })
@@ -1788,6 +1920,7 @@ function makeServiceRow(svc, opts) {
   let dockerInput = null;
   let detailsInput = null;
   let apiKeyInput = null;
+  let widgetFieldInputs = [];
   if (isJelly) {
     const extra = document.createElement("div");
     extra.className = "ss-row-extra";
@@ -1825,6 +1958,16 @@ function makeServiceRow(svc, opts) {
   const isNginx = svc.type === "nginx-proxy-manager" || String(svc.name || "").trim().toLowerCase().includes("nginx");
   let npmEmailInput = null;
   let npmPasswordInput = null;
+  let customEndpointInput = null;
+  let customAuthHeaderInput = null;
+  let customAuthValueInput = null;
+  let customMetricsInput = null;
+  let nextcloudTokenInput = null;
+  let nextcloudUsernameInput = null;
+  let nextcloudPasswordInput = null;
+  let arrApiKeyInput = null;
+  let qbitUsernameInput = null;
+  let qbitPasswordInput = null;
   if (isNginx) {
     const extra = document.createElement("div");
     extra.className = "ss-row-extra";
@@ -1844,6 +1987,131 @@ function makeServiceRow(svc, opts) {
     npmPasswordInput.disabled = isRemoved;
     extra.appendChild(npmPasswordInput);
     row.appendChild(extra);
+  }
+  const isImmich = svc.type === "immich" || String(svc.name || "").trim().toLowerCase() === "immich";
+  let immichDetailsInput = null;
+  let immichApiKeyInput = null;
+  if (isImmich) {
+    const extra = document.createElement("div");
+    extra.className = "ss-row-extra";
+    immichDetailsInput = document.createElement("input");
+    immichDetailsInput.type = "checkbox";
+    immichDetailsInput.checked = !!svc.details;
+    immichDetailsInput.disabled = isRemoved;
+    const detailsLabel = document.createElement("label");
+    detailsLabel.className = "ss-check-label";
+    detailsLabel.appendChild(immichDetailsInput);
+    detailsLabel.appendChild(document.createTextNode(" Show Immich statistics"));
+    extra.appendChild(detailsLabel);
+    immichApiKeyInput = document.createElement("input");
+    immichApiKeyInput.className = "ss-input ss-api-input";
+    immichApiKeyInput.type = "password";
+    immichApiKeyInput.value = svc.apiKey || "";
+    immichApiKeyInput.placeholder = "Immich API key";
+    immichApiKeyInput.title = "Immich API key — Account Settings → API Keys";
+    immichApiKeyInput.disabled = isRemoved;
+    extra.appendChild(immichApiKeyInput);
+    row.appendChild(extra);
+  }
+  const isCustomApi = svc.type === "custom-api";
+  if (isCustomApi) {
+    const extra = document.createElement("div");
+    extra.className = "ss-row-extra ss-custom-row";
+    const widgetConfig = svc.widgetConfig || {};
+    customEndpointInput = document.createElement("input");
+    customEndpointInput.className = "ss-input ss-api-input";
+    customEndpointInput.value = widgetConfig.endpoint || "";
+    customEndpointInput.placeholder = "API endpoint, e.g. /api/status";
+    customEndpointInput.disabled = isRemoved;
+    extra.appendChild(customEndpointInput);
+    customAuthHeaderInput = document.createElement("input");
+    customAuthHeaderInput.className = "ss-input ss-api-input";
+    customAuthHeaderInput.value = widgetConfig.authHeader || "";
+    customAuthHeaderInput.placeholder = "Auth header (optional)";
+    customAuthHeaderInput.disabled = isRemoved;
+    extra.appendChild(customAuthHeaderInput);
+    customAuthValueInput = document.createElement("input");
+    customAuthValueInput.className = "ss-input ss-api-input";
+    customAuthValueInput.type = "password";
+    customAuthValueInput.value = widgetConfig.authValue || "";
+    customAuthValueInput.placeholder = "Auth value (optional)";
+    customAuthValueInput.disabled = isRemoved;
+    extra.appendChild(customAuthValueInput);
+    customMetricsInput = document.createElement("textarea");
+    customMetricsInput.className = "ss-input ss-custom-metrics";
+    customMetricsInput.value = (widgetConfig.metrics || []).map((metric) => `${metric.label}=${metric.path}`).join("\n");
+    customMetricsInput.placeholder = "Metrics: Label=JSON.path (one per line)";
+    customMetricsInput.disabled = isRemoved;
+    extra.appendChild(customMetricsInput);
+    row.appendChild(extra);
+  }
+  const isNextcloud = svc.type === "nextcloud";
+  if (isNextcloud) {
+    const extra = document.createElement("div");
+    extra.className = "ss-row-extra ss-custom-row";
+    const widgetConfig = svc.widgetConfig || {};
+    nextcloudTokenInput = document.createElement("input");
+    nextcloudTokenInput.className = "ss-input ss-api-input";
+    nextcloudTokenInput.type = "password";
+    nextcloudTokenInput.value = widgetConfig.token || "";
+    nextcloudTokenInput.placeholder = "Nextcloud NC-Token (preferred)";
+    nextcloudTokenInput.disabled = isRemoved;
+    extra.appendChild(nextcloudTokenInput);
+    nextcloudUsernameInput = document.createElement("input");
+    nextcloudUsernameInput.className = "ss-input ss-api-input";
+    nextcloudUsernameInput.value = widgetConfig.username || "";
+    nextcloudUsernameInput.placeholder = "Nextcloud username";
+    nextcloudUsernameInput.disabled = isRemoved;
+    extra.appendChild(nextcloudUsernameInput);
+    nextcloudPasswordInput = document.createElement("input");
+    nextcloudPasswordInput.className = "ss-input ss-api-input";
+    nextcloudPasswordInput.type = "password";
+    nextcloudPasswordInput.value = widgetConfig.password || "";
+    nextcloudPasswordInput.placeholder = "Nextcloud password";
+    nextcloudPasswordInput.disabled = isRemoved;
+    extra.appendChild(nextcloudPasswordInput);
+    row.appendChild(extra);
+  }
+  const isArr = ["sonarr", "radarr", "lidarr", "prowlarr"].includes(svc.type);
+  if (isArr) {
+    const extra = document.createElement("div");
+    extra.className = "ss-row-extra";
+    arrApiKeyInput = document.createElement("input");
+    arrApiKeyInput.className = "ss-input ss-api-input";
+    arrApiKeyInput.type = "password";
+    arrApiKeyInput.value = svc.apiKey || "";
+    arrApiKeyInput.placeholder = "API key";
+    arrApiKeyInput.disabled = isRemoved;
+    extra.appendChild(arrApiKeyInput);
+    row.appendChild(extra);
+  }
+  const isQbit = svc.type === "qbittorrent";
+  if (isQbit) {
+    const extra = document.createElement("div");
+    extra.className = "ss-row-extra";
+    const widgetConfig = svc.widgetConfig || {};
+    qbitUsernameInput = document.createElement("input");
+    qbitUsernameInput.className = "ss-input ss-api-input";
+    qbitUsernameInput.value = widgetConfig.username || "";
+    qbitUsernameInput.placeholder = "qBittorrent WebUI username";
+    qbitUsernameInput.disabled = isRemoved;
+    extra.appendChild(qbitUsernameInput);
+    qbitPasswordInput = document.createElement("input");
+    qbitPasswordInput.className = "ss-input ss-api-input";
+    qbitPasswordInput.type = "password";
+    qbitPasswordInput.value = widgetConfig.password || "";
+    qbitPasswordInput.placeholder = "qBittorrent WebUI password";
+    qbitPasswordInput.disabled = isRemoved;
+    extra.appendChild(qbitPasswordInput);
+    row.appendChild(extra);
+  }
+  const widgetType = isJelly ? "jellyfin" : isNginx ? "nginx-proxy-manager" : isImmich ? "immich" : isCustomApi ? "custom-api" : isNextcloud ? "nextcloud" : isArr ? svc.type : isQbit ? "qbittorrent" : null;
+  if (widgetType) {
+    const widgetFields = makeWidgetFieldsEditor(widgetType, svc.widgetFields, isRemoved);
+    if (widgetFields.element) {
+      widgetFieldInputs = widgetFields.inputs;
+      row.appendChild(widgetFields.element);
+    }
   }
   row.appendChild(top);
   row.appendChild(bottom);
@@ -1865,6 +2133,49 @@ function makeServiceRow(svc, opts) {
       updated.type = "nginx-proxy-manager";
       updated.npmEmail = npmEmailInput.value.trim();
       updated.npmPassword = npmPasswordInput.value.trim();
+    }
+    if (isImmich) {
+      updated.type = "immich";
+      updated.details = immichDetailsInput.checked;
+      updated.apiKey = immichApiKeyInput.value.trim();
+    }
+    if (widgetFieldInputs.length) {
+      updated.widgetFields = widgetFieldInputs.filter((input) => input.checked).map((input) => input.dataset.widgetField);
+    }
+    if (isCustomApi) {
+      updated.details = true;
+      updated.type = "custom-api";
+      updated.widgetConfig = {
+        endpoint: customEndpointInput.value.trim(),
+        authHeader: customAuthHeaderInput.value.trim(),
+        authValue: customAuthValueInput.value.trim(),
+        metrics: customMetricsInput.value.split("\n").map((line) => {
+          const [label, ...pathParts] = line.split("=");
+          return { label: label?.trim(), path: pathParts.join("=").trim() };
+        }).filter((metric) => metric.label && metric.path)
+      };
+    }
+    if (isNextcloud) {
+      updated.details = true;
+      updated.type = "nextcloud";
+      updated.widgetConfig = {
+        token: nextcloudTokenInput.value.trim(),
+        username: nextcloudUsernameInput.value.trim(),
+        password: nextcloudPasswordInput.value
+      };
+    }
+    if (isArr) {
+      updated.details = true;
+      updated.type = svc.type;
+      updated.apiKey = arrApiKeyInput.value.trim();
+    }
+    if (isQbit) {
+      updated.details = true;
+      updated.type = "qbittorrent";
+      updated.widgetConfig = {
+        username: qbitUsernameInput.value.trim(),
+        password: qbitPasswordInput.value
+      };
     }
     return updated;
   };
@@ -1951,22 +2262,123 @@ function renderSettingsIconPreview() {
 }
 
 function updateJellyfinAddMenu() {
-  const block = document.getElementById("settingsJellyfinAdd");
-  if (!block) return;
-  const name = (document.getElementById("settingsNewName")?.value || "").trim().toLowerCase();
-  const isJf = name === "jellyfin";
-  block.classList.toggle("hidden", !isJf);
-  if (!isJf) return;
-  const apiRow = document.getElementById("settingsJellyfinApiRow");
-  const details = document.getElementById("settingsNewDetails");
-  if (apiRow) apiRow.classList.toggle("hidden", !(details && details.checked));
+  updateWidgetAddMenu();
 }
 
 function updateNginxAddMenu() {
-  const block = document.getElementById("settingsNginxAdd");
-  if (!block) return;
+  updateWidgetAddMenu();
+}
+
+function selectedWidgetType() {
+  const selected = document.getElementById("settingsNewWidget")?.value;
+  if (selected === "generic") return "";
+  if (selected) return selected;
   const name = (document.getElementById("settingsNewName")?.value || "").trim().toLowerCase();
-  block.classList.toggle("hidden", !name.includes("nginx"));
+  if (name === "jellyfin") return "jellyfin";
+  if (name.includes("nginx")) return "nginx-proxy-manager";
+  if (name === "immich") return "immich";
+  if (name === "nextcloud") return "nextcloud";
+  if (name === "sonarr") return "sonarr";
+  if (name === "radarr") return "radarr";
+  if (name === "lidarr") return "lidarr";
+  if (name === "prowlarr") return "prowlarr";
+  if (name === "qbittorrent") return "qbittorrent";
+  return "";
+}
+
+function availableServiceWidgets() {
+  if (typeof SERVICE_WIDGETS !== "undefined" && Array.isArray(SERVICE_WIDGETS)) return SERVICE_WIDGETS;
+  return [
+    { type: "", label: "Generic service", fields: [] },
+    { type: "custom-api", label: "Custom API", fields: [] },
+    { type: "nextcloud", label: "Nextcloud", fields: [] },
+    { type: "sonarr", label: "Sonarr", fields: [] },
+    { type: "radarr", label: "Radarr", fields: [] },
+    { type: "lidarr", label: "Lidarr", fields: [] },
+    { type: "prowlarr", label: "Prowlarr", fields: [] },
+    { type: "qbittorrent", label: "qBittorrent", fields: [] },
+    { type: "sonarr", label: "Sonarr", fields: [] },
+    { type: "radarr", label: "Radarr", fields: [] },
+    { type: "jellyfin", label: "Jellyfin", fields: [] },
+    { type: "nginx-proxy-manager", label: "Nginx Proxy Manager", fields: [] },
+    { type: "immich", label: "Immich", fields: [] }
+  ];
+}
+
+const WIDGET_FIELD_LABELS = {
+  movies: "Movies", series: "Series", episodes: "Episodes", users: "Users", streaming: "Active streams",
+  nowPlaying: "Now playing", libraries: "Libraries", hosts: "Hosts", streams: "Streams", certificates: "Certificates",
+  deadHosts: "Dead hosts", lastAction: "Last action", photos: "Photos", videos: "Videos", storage: "Storage",
+  freeSpace: "Free space", activeUsers: "Active users", files: "Files", shares: "Shares",
+  wanted: "Wanted", queued: "Queued", series: "Series", movies: "Movies", artists: "Artists", indexers: "Indexers",
+  download: "Download", upload: "Upload", seed: "Seeding", leech: "Leeching"
+};
+
+function makeWidgetFieldsEditor(widget, selectedFields, disabled) {
+  const spec = availableServiceWidgets().find((w) => w.type === widget);
+  if (!spec?.fields?.length) return { element: null, inputs: [] };
+  const selected = Array.isArray(selectedFields) && selectedFields.length ? new Set(selectedFields) : null;
+  const element = document.createElement("div");
+  element.className = "ss-widget-row-fields";
+  const title = document.createElement("span");
+  title.className = "ss-widget-fields-label";
+  title.textContent = "Expanded metrics:";
+  element.appendChild(title);
+  const inputs = spec.fields.map((field) => {
+    const label = document.createElement("label");
+    label.className = "ss-widget-field";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.dataset.widgetField = field;
+    input.checked = !selected || selected.has(field);
+    input.disabled = !!disabled;
+    label.append(input, document.createTextNode(` ${WIDGET_FIELD_LABELS[field] || field}`));
+    element.appendChild(label);
+    return input;
+  });
+  return { element, inputs };
+}
+
+function populateWidgetSelect() {
+  const select = document.getElementById("settingsNewWidget");
+  if (!select) return;
+  const widgets = availableServiceWidgets();
+  const current = select.value || "generic";
+  select.innerHTML = widgets.map((w) => `<option value="${escapeHtml(w.type || "generic")}">${escapeHtml(w.label)}</option>`).join("");
+  select.value = widgets.some((w) => (w.type || "generic") === current) ? current : "generic";
+}
+
+function populateWidgetFields(widget) {
+  const box = document.getElementById("settingsNewWidgetFields");
+  if (!box) return;
+  const previous = new Map([...box.querySelectorAll("[data-widget-field]")].map((el) => [el.dataset.widgetField, el.checked]));
+  const spec = availableServiceWidgets().find((w) => w.type === widget);
+  if (!spec?.fields?.length) {
+    box.innerHTML = "";
+    return;
+  }
+  box.innerHTML = `<span class="field-label">Show in expanded tile</span>${spec.fields.map((field) =>
+    `<label class="ss-widget-field"><input type="checkbox" data-widget-field="${escapeHtml(field)}" ${previous.has(field) ? (previous.get(field) ? "checked" : "") : "checked"} /> ${escapeHtml(WIDGET_FIELD_LABELS[field] || field)}</label>`
+  ).join("")}`;
+}
+
+function updateWidgetAddMenu() {
+  const widget = selectedWidgetType();
+  populateWidgetFields(widget);
+  const jfBlock = document.getElementById("settingsJellyfinAdd");
+  const nginxBlock = document.getElementById("settingsNginxAdd");
+  const immichBlock = document.getElementById("settingsImmichAdd");
+  jfBlock?.classList.toggle("hidden", widget !== "jellyfin");
+  nginxBlock?.classList.toggle("hidden", widget !== "nginx-proxy-manager");
+  immichBlock?.classList.toggle("hidden", widget !== "immich");
+  document.getElementById("settingsCustomApiAdd")?.classList.toggle("hidden", widget !== "custom-api");
+  document.getElementById("settingsNextcloudAdd")?.classList.toggle("hidden", widget !== "nextcloud");
+  document.getElementById("settingsArrAdd")?.classList.toggle("hidden", widget !== "sonarr" && widget !== "radarr");
+  document.getElementById("settingsQbittorrentAdd")?.classList.toggle("hidden", widget !== "qbittorrent");
+  const jfDetails = document.getElementById("settingsNewDetails");
+  document.getElementById("settingsJellyfinApiRow")?.classList.toggle("hidden", widget !== "jellyfin" || !jfDetails?.checked);
+  const imDetails = document.getElementById("settingsNewImmichDetails");
+  document.getElementById("settingsImmichApiRow")?.classList.toggle("hidden", widget !== "immich" || !imDetails?.checked);
 }
 
 function setupSettingsServiceSuggest() {
@@ -1975,6 +2387,7 @@ function setupSettingsServiceSuggest() {
   const catInput = document.getElementById("settingsNewCat");
   const catCustom = document.getElementById("settingsNewCatCustom");
   if (!input || !box) return;
+  populateWidgetSelect();
   input.addEventListener("input", () => {
     const hadPick = !!settingsPick;
     settingsPick = null;
@@ -2009,7 +2422,10 @@ function setupSettingsServiceSuggest() {
         if (catInput) catInput.classList.remove("hidden");
         box.classList.add("hidden");
         renderSettingsIconPreview();
-        updateJellyfinAddMenu();
+        const widgetSelect = document.getElementById("settingsNewWidget");
+        const inferred = s.name.toLowerCase() === "jellyfin" ? "jellyfin" : s.name.toLowerCase().includes("nginx") ? "nginx-proxy-manager" : s.name.toLowerCase() === "immich" ? "immich" : s.name.toLowerCase() === "nextcloud" ? "nextcloud" : s.name.toLowerCase() === "sonarr" ? "sonarr" : s.name.toLowerCase() === "radarr" ? "radarr" : s.name.toLowerCase() === "lidarr" ? "lidarr" : s.name.toLowerCase() === "prowlarr" ? "prowlarr" : s.name.toLowerCase() === "qbittorrent" ? "qbittorrent" : "generic";
+        if (widgetSelect) widgetSelect.value = inferred;
+        updateWidgetAddMenu();
         const urlInput = document.getElementById("settingsNewUrl");
         if (urlInput && !urlInput.value.trim()) urlInput.placeholder = `http://host:${s.defaultPort}`;
       });
@@ -2055,6 +2471,8 @@ function initSettingsModal() {
 
   const newDetails = document.getElementById("settingsNewDetails");
   newDetails?.addEventListener("change", updateJellyfinAddMenu);
+  document.getElementById("settingsNewImmichDetails")?.addEventListener("change", updateWidgetAddMenu);
+  document.getElementById("settingsNewWidget")?.addEventListener("change", updateWidgetAddMenu);
 
   document.getElementById("settingsAddService").addEventListener("click", () => {
     const name = document.getElementById("settingsNewName").value.trim();
@@ -2065,16 +2483,44 @@ function initSettingsModal() {
     const usingCustom = catCustom && !catCustom.classList.contains("hidden");
     const icon = settingsPick?.icon || null;
     const category = (usingCustom ? catCustom.value.trim() : catInput?.value.trim()) || "Other";
-    const isJf = name.toLowerCase() === "jellyfin";
-    const isNx = name.toLowerCase().includes("nginx");
+    const widgetType = selectedWidgetType();
+    const isJf = widgetType === "jellyfin";
+    const isNx = widgetType === "nginx-proxy-manager";
+    const isImmich = widgetType === "immich";
+    const isCustomApi = widgetType === "custom-api";
+    const isNextcloud = widgetType === "nextcloud";
+    const isArr = ["sonarr", "radarr", "lidarr", "prowlarr"].includes(widgetType);
+    const isQbit = widgetType === "qbittorrent";
     const details = isJf && !!newDetails?.checked;
-    const apiKey = details ? (document.getElementById("settingsNewApiKey")?.value || "").trim() : "";
+    const immichDetails = isImmich && !!document.getElementById("settingsNewImmichDetails")?.checked;
+    const apiKey = details
+      ? (document.getElementById("settingsNewApiKey")?.value || "").trim()
+      : immichDetails ? (document.getElementById("settingsNewImmichApiKey")?.value || "").trim()
+      : isArr ? (document.getElementById("settingsNewArrApiKey")?.value || "").trim() : "";
     const npmEmail = isNx ? (document.getElementById("settingsNewNpmEmail")?.value || "").trim() : "";
     const npmPassword = isNx ? (document.getElementById("settingsNewNpmPassword")?.value || "").trim() : "";
+    const widgetFields = [...document.querySelectorAll("#settingsNewWidgetFields [data-widget-field]:checked")].map((el) => el.dataset.widgetField);
+    const customMetrics = (document.getElementById("settingsNewCustomMetrics")?.value || "").split("\n").map((line) => {
+      const [label, ...pathParts] = line.split("=");
+      return { label: label?.trim(), path: pathParts.join("=").trim() };
+    }).filter((metric) => metric.label && metric.path);
     stagedServices.added.push({
       id: "new-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       name, url, icon, category,
-      type: isJf ? "jellyfin" : isNx ? "nginx-proxy-manager" : null, details, apiKey,
+       type: widgetType || null, details: details || immichDetails || isCustomApi || isNextcloud || isArr || isQbit, apiKey, widgetFields,
+       widgetConfig: isCustomApi ? {
+         endpoint: document.getElementById("settingsNewCustomEndpoint")?.value.trim() || "",
+         authHeader: document.getElementById("settingsNewCustomAuthHeader")?.value.trim() || "",
+         authValue: document.getElementById("settingsNewCustomAuthValue")?.value.trim() || "",
+         metrics: customMetrics
+       } : isNextcloud ? {
+         token: document.getElementById("settingsNewNextcloudToken")?.value.trim() || "",
+         username: document.getElementById("settingsNewNextcloudUsername")?.value.trim() || "",
+         password: document.getElementById("settingsNewNextcloudPassword")?.value || ""
+        } : isQbit ? {
+          username: document.getElementById("settingsNewQbitUsername")?.value.trim() || "",
+          password: document.getElementById("settingsNewQbitPassword")?.value || ""
+        } : {},
       npmEmail, npmPassword,
       size: 1, rows: 1
     });
@@ -2084,14 +2530,34 @@ function initSettingsModal() {
     settingsPick = null;
     resetAddCategoryField();
     if (newDetails) newDetails.checked = false;
+    const widgetSelect = document.getElementById("settingsNewWidget");
+    if (widgetSelect) widgetSelect.value = "generic";
     const apiKeyInput = document.getElementById("settingsNewApiKey");
     if (apiKeyInput) apiKeyInput.value = "";
-    updateJellyfinAddMenu();
+    const immichDetailsInput = document.getElementById("settingsNewImmichDetails");
+    if (immichDetailsInput) immichDetailsInput.checked = false;
+    const immichApiInput = document.getElementById("settingsNewImmichApiKey");
+    if (immichApiInput) immichApiInput.value = "";
+    ["settingsNewCustomEndpoint", "settingsNewCustomAuthHeader", "settingsNewCustomAuthValue", "settingsNewCustomMetrics"].forEach((id) => {
+      const input = document.getElementById(id);
+      if (input) input.value = "";
+    });
+    ["settingsNewNextcloudToken", "settingsNewNextcloudUsername", "settingsNewNextcloudPassword"].forEach((id) => {
+      const input = document.getElementById(id);
+      if (input) input.value = "";
+    });
+    const arrApiInput = document.getElementById("settingsNewArrApiKey");
+    if (arrApiInput) arrApiInput.value = "";
+    ["settingsNewQbitUsername", "settingsNewQbitPassword"].forEach((id) => {
+      const input = document.getElementById(id);
+      if (input) input.value = "";
+    });
+    updateWidgetAddMenu();
     const npmEmailInput = document.getElementById("settingsNewNpmEmail");
     if (npmEmailInput) npmEmailInput.value = "";
     const npmPasswordInput = document.getElementById("settingsNewNpmPassword");
     if (npmPasswordInput) npmPasswordInput.value = "";
-    updateNginxAddMenu();
+    updateWidgetAddMenu();
     const suggestBox = document.getElementById("settingsServiceSuggest");
     if (suggestBox) suggestBox.classList.add("hidden");
     renderSettingsIconPreview();

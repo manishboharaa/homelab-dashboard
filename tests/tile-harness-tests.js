@@ -30,6 +30,7 @@ serviceInfoCache.set(jf.id, {
       serverName: "Media-Server", version: "10.9.11", os: "Linux", arch: "x86_64",
       movies: 412, series: 67, episodes: 3400, activeSessions: 2, libraries: 3, users: 2,
       artists: 55, albums: 120, songs: 3500, genres: 42, collections: 9,
+      nowPlaying: [{ title: "The Expanse", user: "Networkbohara", type: "Episode", progressPct: 42 }],
       recentPlays: { days: 14, labels: ["Aug 5", "Aug 11"], values: [3, 7], max: 7 },
       libraryTotals: [
         { name: "Movies", type: "movies", count: 412 },
@@ -53,8 +54,11 @@ assert(moreLg.innerHTML.includes("67"), "jellyfin series cell");
 assert(moreLg.innerHTML.includes("3400"), "jellyfin episodes cell");
 assert(moreLg.innerHTML.includes("Streaming"), "jellyfin streaming label");
 assert(moreLg.innerHTML.includes("Users"), "jellyfin users label");
+assert(moreLg.innerHTML.includes("The Expanse"), "jellyfin now-playing title");
+assert(moreLg.innerHTML.includes("Networkbohara"), "jellyfin now-playing user");
+assert(moreLg.innerHTML.includes("svc-now-playing"), "jellyfin now-playing section");
 assert(!moreLg.innerHTML.includes("Libraries"), "jellyfin libraries label not in level-3 core fields");
-assert(moreLg.innerHTML.includes("10.9.11"), "jellyfin version in meta");
+assert(!moreLg.innerHTML.includes("10.9.11") && !moreLg.innerHTML.includes("Linux"), "jellyfin hides server version metadata");
 
 applySpan(tileLg, jf, 1);
 eq(tileLg.dataset.span, "1", "applySpan sets span 1");
@@ -160,15 +164,16 @@ assert(tileDown.querySelector(".service-more").innerHTML.includes("down"), "down
 
 const jfPublic = { id: "jp", name: "Jellyfin", url: "http://x", icon: null, category: "Media", size: "sm", docker: "", type: "jellyfin", details: true, apiKey: "" };
 serviceInfoCache.set(jfPublic.id, {
-  data: { source: "ping", up: true, uptimeSec: 10, jellyfin: { serverName: "Media-Server", version: "10.9.11", os: "Linux" } },
+  data: { source: "ping", up: true, uptimeSec: 10, jellyfin: { serverName: "Media-Server", version: "10.9.11", os: "Linux", authError: "missing-api-key" } },
   at: Date.now()
 });
 const tileJp = makeServiceTile(jfPublic);
 applySpan(tileJp, jfPublic, 3);
 const jpMore = tileJp.querySelector(".service-more").innerHTML;
-assert(!jpMore.includes("service-info"), "jellyfin no-key hides expanded info entirely");
-assert(!jpMore.includes("Media-Server"), "jellyfin no-key hides server meta");
+assert(jpMore.includes("service-info"), "jellyfin no-key keeps widget error state");
+assert(!jpMore.includes("Media-Server") && jpMore.includes("API key"), "jellyfin no-key shows only credential guidance");
 assert(!jpMore.includes("Movies"), "jellyfin no-key hides counts");
+assert(jpMore.includes("Add a Jellyfin API key"), "jellyfin no-key explains missing widget data");
 
 serviceInfoCache.set("p1", { data: { source: "ping", up: true, uptimeSec: 42 * 60, checkedAt: Date.parse("2026-08-11T10:30:00Z") }, at: Date.now() });
 const tileP = makeServiceTile(CONFIG.services[1]);
@@ -314,6 +319,18 @@ jfName.value = "plex";
 updateJellyfinAddMenu();
 assert(jfBlock.classList.contains("hidden"), "add menu hidden for non-jellyfin");
 
+const widgetSelect = document.getElementById("settingsNewWidget");
+const immichBlock = document.getElementById("settingsImmichAdd");
+if (widgetSelect && immichBlock) {
+  jfName.value = "Immich";
+  widgetSelect.value = "immich";
+  updateWidgetAddMenu();
+  assert(!immichBlock.classList.contains("hidden"), "immich widget options visible");
+  widgetSelect.value = "generic";
+  updateWidgetAddMenu();
+  assert(immichBlock.classList.contains("hidden"), "generic widget hides immich options");
+}
+
 const rowJf = makeServiceRow({ id: "r1", name: "Jellyfin", url: "http://x", icon: "https://icons.example/jellyfin.png", category: "Media", size: "sm", docker: "jellyfin", type: "jellyfin", details: true, apiKey: "k" });
 const extraJf = rowJf.children.find((c) => c.className === "ss-row-extra");
 assert(!!extraJf, "jellyfin row has extra row");
@@ -324,6 +341,22 @@ assert(!extraJf.children.some((c) => c.className.includes("ss-type-input")), "je
 
 const rowJfByName = makeServiceRow({ id: "r3", name: "jellyfin", url: "http://x", icon: null, category: "Media", size: "sm", docker: "", type: null, details: false, apiKey: "" });
 assert(!!rowJfByName.children.find((c) => c.className === "ss-row-extra"), "row named jellyfin (case-insensitive) gets extras");
+
+const rowImmich = makeServiceRow({ id: "r4", name: "Immich", url: "http://x", icon: null, category: "Media", size: "sm", docker: "", type: null, details: true, apiKey: "k" });
+const extraImmich = rowImmich.children.find((c) => c.className === "ss-row-extra");
+assert(!!extraImmich && extraImmich.children.some((c) => c.className.includes("ss-api-input")), "immich row has API key input");
+const immichHtml = renderImmichInfo({ immich: { users: 4, photos: 1200, videos: 88, storageBytes: 1024 * 1024 * 500 } });
+assert(immichHtml.includes(">1200<") && immichHtml.includes("500 MB"), "immich widget renders photo and storage metrics");
+const filteredImmichHtml = renderImmichInfo({ immich: { users: 4, photos: 1200, videos: 88, storageBytes: 1024 * 1024 * 500 } }, ["photos"]);
+assert(filteredImmichHtml.includes("Photos") && !filteredImmichHtml.includes("Users"), "immich widget respects selected metric fields");
+const customApiHtml = renderCustomApiInfo({ customApi: { metrics: [{ label: "Users", value: 4 }, { label: "Health", value: "ok" }] } });
+assert(customApiHtml.includes("Users") && customApiHtml.includes("Health") && customApiHtml.includes(">4<"), "custom API widget renders mapped metrics");
+const nextcloudHtml = renderNextcloudInfo({ nextcloud: { freeSpace: 1024 * 1024 * 1024, activeUsers: 3, files: 120, shares: 8 } });
+assert(nextcloudHtml.includes("Free space") && nextcloudHtml.includes("1.0 GB") && nextcloudHtml.includes(">3<"), "nextcloud widget renders server metrics");
+const arrHtml = renderArrInfo({ arr: { wanted: 2, queued: 1, library: 12, libraryLabel: "Series" } }, ["wanted", "series"]);
+assert(arrHtml.includes("Wanted") && arrHtml.includes("Series") && !arrHtml.includes("Queued"), "arr widget respects selected metrics");
+const qbitHtml = renderQbittorrentInfo({ qbittorrent: { download: 1024 * 1024, upload: 512, seed: 4, leech: 2 } });
+assert(qbitHtml.includes("Download") && qbitHtml.includes("1 MB/s") && qbitHtml.includes(">4<"), "qBittorrent widget renders transfer metrics");
 
 const jfCollected = rowJf.collect();
 assert(jfCollected.id === "r1" && jfCollected.type === "jellyfin" && jfCollected.docker === "jellyfin", "jellyfin row collect() carries id + type + docker");

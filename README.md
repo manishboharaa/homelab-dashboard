@@ -22,6 +22,8 @@ No account, no cloud dependency, no API keys required to get started.
 - [DNS blocking stats (Pi-hole or AdGuard Home)](#dns-blocking-stats-pi-hole-or-adguard-home)
 - [Proxmox VE guests](#proxmox-ve-guests)
 - [Nginx Proxy Manager](#nginx-proxy-manager)
+- [Service integrations](#service-integrations)
+- [Custom API services](#custom-api-services)
 - [Editing settings after setup](#editing-settings-after-setup)
 - [Manually editing config.json](#manually-editing-configjson)
 - [Updating](#updating)
@@ -93,7 +95,13 @@ No account, no cloud dependency, no API keys required to get started.
   dead hosts, and the last audit log action. Info appears progressively as
   the tile gets wider/taller. Credentials are entered in Settings →
   Services (email + password fields appear automatically for nginx
-  services).
+   services).
+- **Service integrations** — connect common homelab apps to show useful live
+  metrics inside their tiles: Jellyfin, Immich, Nginx Proxy Manager,
+  Nextcloud, Sonarr, Radarr, Lidarr, Prowlarr, and qBittorrent.
+- **Custom API services** — connect an app that does not have a built-in
+  integration by entering an endpoint, optional authentication header, and
+  JSON paths for the metrics you want to display.
 - **Dark, sleek UI** — no build step, no framework, just HTML/CSS/JS
   served by a small Express app, so the Docker image stays small and easy
   to hack on.
@@ -193,6 +201,8 @@ main view, and everything from the wizard is editable from Settings.
 | DNS stats | Status, queries today, blocked today, blocked %, blocklist size + a 24h graph (always visible); click the **▾** arrow for Top Clients / Top Blocked / Top Allowed, which scroll inside the panel — for Pi-hole and/or AdGuard Home (only shown if configured) |
 | Proxmox | Nodes, VMs/CTs running, total guests + a collapsible list of every VM/LXC. Click a guest's **▸** for its IP address(es), disk usage, network I/O, and uptime (only shown if configured) |
 | Nginx Proxy Manager | Proxy hosts, streams, certs, dead hosts, last audit action — info grows as the tile expands (only shown if configured with email + password) |
+| Service integrations | Built-in metrics for Jellyfin, Immich, Nginx Proxy Manager, Nextcloud, Sonarr, Radarr, Lidarr, Prowlarr, and qBittorrent |
+| Custom API service | User-defined metrics read from a JSON endpoint |
 | Services grid | Your added services — click a tile to open it in a new tab; **drag** a tile to reorder the grid or move it to another category. **+ Add service** opens Settings → Services |
 | Open Ports | Every listening port on the host with process name and PID |
 | Sidebar → Search | Instantly filters the services grid as you type |
@@ -214,6 +224,8 @@ here's what each piece maps to under the hood:
 | AdGuard Home URL + credentials | Wizard step 5, or Settings → AdGuard | See [DNS blocking stats](#dns-blocking-stats-pi-hole-or-adguard-home) |
 | Proxmox URL + API token | Wizard step 6 (Host type), or Settings → Proxmox | See [Proxmox VE guests](#proxmox-ve-guests) |
 | NPM login email + password | Settings → Services (nginx service row) | See [Nginx Proxy Manager](#nginx-proxy-manager) |
+| Service widget credentials | Settings → Services → select a service integration | Credentials and visible metrics are saved with the service |
+| Custom API endpoint and metrics | Settings → Services → Service widget → Custom API | See [Custom API services](#custom-api-services) |
 | Stats shown in the first row | Settings → System Info | Pick up to 6 of the 10 stats for the collapsed first row; the rest appear behind "Show all" |
 | Timezone | `docker-compose.yml` → `TZ` | Set before first build, see below |
 | Primary disk path | `docker-compose.yml` → `HOST_DISK_PATH` | Defaults to `/hostfs`, see below |
@@ -407,6 +419,52 @@ To set it up:
 > [guest agent](https://pve.proxmox.com/wiki/Qemu-guest-agent) installed to
 > report IPs; without it the IP line shows **—**.
 
+## Service integrations
+
+When adding or editing a service, choose its integration in **⚙️ Settings →
+Services → Service widget**. The dashboard shows the available metric checkboxes
+for that integration, so you can keep each expanded tile focused.
+
+| Integration | Credentials | Metrics |
+|---|---|---|
+| Jellyfin | API key | Movies, series, episodes, active streams, users, now playing, libraries |
+| Immich | API key | Users, photos, videos, storage |
+| Nginx Proxy Manager | Login email + password | Hosts, streams, certificates, dead hosts, last action |
+| Nextcloud | NC-Token, or username + password | Free space, active users, files, shares |
+| Sonarr | API key | Wanted, queued, series |
+| Radarr | API key | Wanted, queued, movies |
+| Lidarr | API key | Wanted, queued, artists |
+| Prowlarr | API key | Indexers |
+| qBittorrent | WebUI username + password | Download/upload speed, seeding, leeching |
+
+Credentials are sent by the dashboard server to the configured service. They
+are not placed in the service tile link.
+
+## Custom API services
+
+Custom API is the universal fallback for an app without a built-in integration.
+It reads JSON from any HTTP(S) endpoint and maps selected values into the
+expanded service tile.
+
+1. Add or edit a service and choose **Custom API** as its Service widget.
+2. Enter the API endpoint. Use a path such as `/api/status`, or enter a full
+   URL when the endpoint is hosted separately from the service URL.
+3. Optionally enter an authentication header and value, such as
+   `X-Api-Key` and the app's API key.
+4. Add one metric per line using `Label=JSON.path`, for example:
+
+   ```text
+   Users=users
+   Storage used=storage.used
+   Active jobs=jobs.active
+   ```
+
+5. Save the Services tab. The mapped values appear when the tile is expanded.
+
+The endpoint must return JSON. Nested object paths use dots; for example,
+`storage.used` reads `{ "storage": { "used": 123 } }`. Generic services remain
+available when no integration is selected.
+
 ## Editing settings after setup
 
 Click the ⚙️ icon top-right at any time to:
@@ -422,7 +480,9 @@ Click the ⚙️ icon top-right at any time to:
 - Connect Nginx Proxy Manager (enter email + password for live stats)
 - Rearrange services by dragging tiles on the main page
 
-Changes save immediately — no restart needed.
+Changes are staged per tab and saved with the **Save** button at the top of
+Settings. Service metric and credential changes take effect immediately after
+saving; no restart is needed.
 
 ## Manually editing config.json
 
