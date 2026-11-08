@@ -862,6 +862,21 @@ input { font-family: inherit; }
   color: var(--text-muted);
 }
 .empty-state p { margin-bottom: 16px; }
+.service-search-empty {
+  padding: 22px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+}
+.service-search-summary {
+  margin: -2px 0 12px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
 
 
 .ports-section { margin-top: 0; }

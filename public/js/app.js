@@ -317,10 +317,7 @@ function initDashboard() {
   window.addEventListener("resize", normalizeTileSpans);
 
   document.getElementById("serviceSearch").addEventListener("input", (e) => {
-    const q = e.target.value.toLowerCase();
-    document.querySelectorAll(".service-tile").forEach((tile) => {
-      tile.style.display = tile.dataset.name.includes(q) ? "" : "none";
-    });
+    filterServices(e.target.value);
   });
 
   document.getElementById("portsSearch").addEventListener("input", (e) => {
@@ -963,7 +960,11 @@ function toastResult(res, okMsg) {
 function renderServices() {
   const grid = document.getElementById("servicesGrid");
   const empty = document.getElementById("emptyState");
+  const searchEmpty = document.getElementById("serviceSearchEmpty");
+  const searchSummary = document.getElementById("serviceSearchSummary");
   grid.innerHTML = "";
+  searchEmpty?.classList.add("hidden");
+  searchSummary?.classList.add("hidden");
 
   if (!CONFIG.services.length) {
     empty.classList.remove("hidden");
@@ -990,13 +991,18 @@ function renderServices() {
     const group = document.createElement("div");
     group.className = "svc-group";
     group.dataset.cat = cat;
+    group.dataset.order = String(order.indexOf(cat));
     const head = document.createElement("div");
     head.className = "svc-cat-head";
     head.innerHTML = `${escapeHtml(cat)}<span class="svc-count">${groups.get(cat).length}</span>`;
     group.appendChild(head);
     const sub = document.createElement("div");
     sub.className = "services-grid";
-    groups.get(cat).forEach((svc) => sub.appendChild(makeServiceTile(svc)));
+    groups.get(cat).forEach((svc, index) => {
+      const tile = makeServiceTile(svc);
+      tile.dataset.searchOrder = String(index);
+      sub.appendChild(tile);
+    });
     group.appendChild(sub);
 
     group.addEventListener("dragenter", (e) => {
@@ -1027,6 +1033,50 @@ function renderServices() {
     grid.appendChild(group);
   });
   normalizeTileSpans();
+  filterServices(document.getElementById("serviceSearch")?.value || "");
+}
+
+function filterServices(query) {
+  const q = String(query || "").trim().toLowerCase();
+  const displayQuery = String(query || "").trim();
+  const grid = document.getElementById("servicesGrid");
+  const searchEmpty = document.getElementById("serviceSearchEmpty");
+  const searchSummary = document.getElementById("serviceSearchSummary");
+  let matches = 0;
+  const groups = [...document.querySelectorAll("#servicesGrid .svc-group")];
+  groups.forEach((group) => {
+    let groupMatches = 0;
+    const tiles = [...group.querySelectorAll(".service-tile")];
+    tiles.sort((a, b) => {
+      if (!q) return Number(a.dataset.searchOrder) - Number(b.dataset.searchOrder);
+      const aMatch = q && a.dataset.name.includes(q) ? 1 : 0;
+      const bMatch = q && b.dataset.name.includes(q) ? 1 : 0;
+      return bMatch - aMatch;
+    });
+    tiles.forEach((tile) => {
+      tile.style.display = "";
+      group.querySelector(".services-grid")?.appendChild(tile);
+      if (q && tile.dataset.name.includes(q)) groupMatches++;
+    });
+    group.style.display = "";
+    const count = group.querySelector(".svc-count");
+    if (count) count.textContent = q && groupMatches ? `${groupMatches}/${tiles.length}` : `${tiles.length}`;
+    group.dataset.matches = String(groupMatches);
+    matches += groupMatches;
+  });
+  groups.sort((a, b) => {
+    if (!q) return Number(a.dataset.order) - Number(b.dataset.order);
+    return Number(b.dataset.matches) - Number(a.dataset.matches)
+      || Number(a.dataset.order) - Number(b.dataset.order);
+  }).forEach((group) => grid?.appendChild(group));
+  if (searchSummary) {
+    searchSummary.textContent = q ? `Search results for “${displayQuery}” are shown first.` : "";
+    searchSummary.classList.toggle("hidden", !q);
+  }
+  if (searchEmpty) {
+    searchEmpty.textContent = q && !matches ? `No services found for “${displayQuery}”. Showing all services below.` : "";
+    searchEmpty.classList.toggle("hidden", !q || matches > 0);
+  }
 }
 
 function moveServiceToCategory(id, cat) {
