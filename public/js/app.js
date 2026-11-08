@@ -2931,12 +2931,49 @@ async function saveRss() {
   if (toastResult(res, "News feeds saved")) closeSettings();
 }
 
+function serviceCredentialError(svc) {
+  const type = svc?.type;
+  const apiKeyTypes = ["jellyfin", "emby", "plex", "immich", "sonarr", "radarr", "lidarr", "prowlarr", "overseerr", "portainer"];
+  if (apiKeyTypes.includes(type) && svc.details && !String(svc.apiKey || "").trim()) {
+    const labels = { jellyfin: "Jellyfin", emby: "Emby", plex: "Plex", immich: "Immich", overseerr: "Overseerr", portainer: "Portainer" };
+    return `${labels[type] || type} requires an API key or token.`;
+  }
+  if (type === "nginx-proxy-manager" && (!String(svc.npmEmail || "").trim() || !String(svc.npmPassword || ""))) {
+    return "Nginx Proxy Manager requires both login email and password.";
+  }
+  if (type === "nextcloud") {
+    const cfg = svc.widgetConfig || {};
+    if (!String(cfg.token || "").trim() && (!String(cfg.username || "").trim() || !String(cfg.password || ""))) {
+      return "Nextcloud requires an NC-Token or both username and password.";
+    }
+  }
+  if (type === "qbittorrent") {
+    const cfg = svc.widgetConfig || {};
+    if (!String(cfg.username || "").trim() || !String(cfg.password || "")) {
+      return "qBittorrent requires both WebUI username and password.";
+    }
+  }
+  return null;
+}
+
 async function saveServices() {
   const rows = [...document.querySelectorAll("#settingsServicesList .settings-service-row")];
+  const collectedByRow = new Map();
+  let validationError = null;
+  rows.forEach((row) => {
+    if (row.classList.contains("ss-row-removed")) return;
+    const collected = row.collect();
+    collectedByRow.set(row, collected);
+    validationError = validationError || serviceCredentialError(collected);
+  });
+  if (validationError) {
+    showToast(validationError);
+    return;
+  }
   const ops = [];
   rows.forEach((row) => {
     if (row.classList.contains("ss-row-new")) {
-      const { id, ...rest } = row.collect();
+      const { id, ...rest } = collectedByRow.get(row);
       ops.push(fetch("/api/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2946,7 +2983,7 @@ async function saveServices() {
       ops.push(fetch(`/api/services/${row.dataset.id}`, { method: "DELETE" }));
     } else {
       const svc = CONFIG.services.find((s) => s.id === row.dataset.id);
-      const collected = row.collect();
+      const collected = collectedByRow.get(row);
       if (svc && JSON.stringify(collected) !== JSON.stringify(svc)) {
         ops.push(fetch(`/api/services/${row.dataset.id}`, {
           method: "PUT",

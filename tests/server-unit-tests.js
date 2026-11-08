@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { parseDockerPort } = require("../server");
+const { parseDockerPort, serviceCredentialError } = require("../server");
 
 function testDockerPortParsing() {
   assert.deepStrictEqual(
@@ -21,4 +21,20 @@ function testDockerPortParsing() {
 }
 
 testDockerPortParsing();
-console.log("4 server unit tests passed");
+
+assert.strictEqual(
+  serviceCredentialError({ type: "plex", details: true, apiKey: "" }),
+  "Plex requires an API key or token.",
+  "rejects a Plex service without a token"
+);
+assert.strictEqual(
+  serviceCredentialError({ type: "nextcloud", details: true, widgetConfig: { username: "", password: "" } }),
+  "Nextcloud requires an NC-Token or both username and password.",
+  "rejects incomplete Nextcloud credentials"
+);
+assert.strictEqual(
+  serviceCredentialError({ type: "portainer", details: true, apiKey: "token" }),
+  null,
+  "accepts a Portainer token"
+);
+console.log("7 server unit tests passed");

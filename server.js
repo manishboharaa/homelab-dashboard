@@ -115,6 +115,31 @@ function cleanService(s) {
   };
 }
 
+function serviceCredentialError(svc) {
+  const type = svc?.type;
+  const apiKeyTypes = ["jellyfin", "emby", "plex", "immich", "sonarr", "radarr", "lidarr", "prowlarr", "overseerr", "portainer"];
+  if (apiKeyTypes.includes(type) && svc.details && !String(svc.apiKey || "").trim()) {
+    const labels = { jellyfin: "Jellyfin", emby: "Emby", plex: "Plex", immich: "Immich", overseerr: "Overseerr", portainer: "Portainer" };
+    return `${labels[type] || type} requires an API key or token.`;
+  }
+  if (type === "nginx-proxy-manager" && (!String(svc.npmEmail || "").trim() || !String(svc.npmPassword || ""))) {
+    return "Nginx Proxy Manager requires both login email and password.";
+  }
+  if (type === "nextcloud") {
+    const cfg = svc.widgetConfig || {};
+    if (!String(cfg.token || "").trim() && (!String(cfg.username || "").trim() || !String(cfg.password || ""))) {
+      return "Nextcloud requires an NC-Token or both username and password.";
+    }
+  }
+  if (type === "qbittorrent") {
+    const cfg = svc.widgetConfig || {};
+    if (!String(cfg.username || "").trim() || !String(cfg.password || "")) {
+      return "qBittorrent requires both WebUI username and password.";
+    }
+  }
+  return null;
+}
+
 
 
 app.get("/api/config", (req, res) => {
@@ -152,9 +177,12 @@ app.put("/api/settings", (req, res) => {
   if (system) cfg.system = { ...cfg.system, ...system };
   if (Array.isArray(services)) {
     const byId = new Map(cfg.services.map((s) => [s.id, s]));
-    cfg.services = services.map((s) =>
+    const nextServices = services.map((s) =>
       cleanService(byId.has(s.id) ? { ...byId.get(s.id), ...s } : s)
     );
+    const invalid = nextServices.map(serviceCredentialError).find(Boolean);
+    if (invalid) return res.status(422).json({ error: "validation", message: invalid });
+    cfg.services = nextServices;
   }
   if (proxmox) cfg.proxmox = { ...cfg.proxmox, ...proxmox, url: normalizeUrl(proxmox.url) };
   writeConfig(cfg);
@@ -180,6 +208,8 @@ app.post("/api/services", (req, res) => {
     npmEmail: req.body.npmEmail,
     npmPassword: req.body.npmPassword
   });
+  const credentialError = serviceCredentialError(svc);
+  if (credentialError) return res.status(422).json({ error: "validation", message: credentialError });
   cfg.services.push(svc);
   writeConfig(cfg);
   res.json(svc);
@@ -189,7 +219,10 @@ app.put("/api/services/:id", (req, res) => {
   const cfg = readConfig();
   const idx = cfg.services.findIndex((s) => s.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "not found" });
-  cfg.services[idx] = cleanService({ ...cfg.services[idx], ...req.body, id: req.params.id });
+  const updated = cleanService({ ...cfg.services[idx], ...req.body, id: req.params.id });
+  const credentialError = serviceCredentialError(updated);
+  if (credentialError) return res.status(422).json({ error: "validation", message: credentialError });
+  cfg.services[idx] = updated;
   writeConfig(cfg);
   res.json(cfg.services[idx]);
 });
@@ -1533,4 +1566,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, parseDockerPort };
+module.exports = { app, parseDockerPort, serviceCredentialError };
