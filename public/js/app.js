@@ -2785,7 +2785,7 @@ async function saveTab(tab) {
   if (tab === "proxmox") refreshProxmox();
   if (tab === "system") { renderSettingsStats(); refreshStats(); }
   updateSaveState(tab);
-  toastResult(res, "Saved");
+  if (toastResult(res, "Saved")) closeSettings();
 }
 
 async function saveWeather() {
@@ -2802,7 +2802,7 @@ async function saveWeather() {
     : "No location set";
   refreshWeather();
   updateSaveState("weather");
-  toastResult(res, "Weather saved");
+  if (toastResult(res, "Weather saved")) closeSettings();
 }
 
 async function saveRss() {
@@ -2816,7 +2816,7 @@ async function saveRss() {
   renderRssEditor("settingsRssList", pendingFeeds, () => updateSaveState("rss"));
   refreshRss();
   updateSaveState("rss");
-  toastResult(res, "News feeds saved");
+  if (toastResult(res, "News feeds saved")) closeSettings();
 }
 
 async function saveServices() {
@@ -2853,6 +2853,7 @@ async function saveServices() {
   renderServices();
   updateSaveState("services");
   showToast(ok ? "Services saved" : "Some service changes failed");
+  if (ok) closeSettings();
 }
 
 boot();
