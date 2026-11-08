@@ -1021,6 +1021,9 @@ input { font-family: inherit; }
 .ss-widget-field input { accent-color: var(--accent); }
 .ss-widget-row-fields { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 .ss-widget-fields-label { width: 100%; font-size: 11px; color: var(--text-muted); }
+.ss-custom-auth-row { display: flex; gap: 8px; }
+.ss-custom-auth-row > * { flex: 1; }
+.ss-custom-metrics { min-height: 70px; resize: vertical; font-family: inherit; }
 
 .ss-add-row { display: flex; align-items: center; gap: 8px; position: relative; }
 .ss-name-wrap { position: relative; flex: 1; }

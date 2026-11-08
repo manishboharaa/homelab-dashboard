@@ -317,6 +317,35 @@
             <p class="ss-jf-hint">Immich &rarr; Account Settings &rarr; API Keys (requires server.statistics)</p>
           </div>
         </div>
+        <div id="settingsCustomApiAdd" class="ss-jf-block hidden">
+          <input id="settingsNewCustomEndpoint" type="text" placeholder="API endpoint, e.g. /api/status" class="wizard-input small" autocomplete="off" />
+          <div class="ss-custom-auth-row">
+            <input id="settingsNewCustomAuthHeader" type="text" placeholder="Auth header (optional), e.g. X-Api-Key" class="wizard-input small" autocomplete="off" />
+            <input id="settingsNewCustomAuthValue" type="password" placeholder="Auth value (optional)" class="wizard-input small" autocomplete="off" />
+          </div>
+          <label class="field-label" for="settingsNewCustomMetrics">Metrics, one per line: Label=JSON.path</label>
+          <textarea id="settingsNewCustomMetrics" class="wizard-input small ss-custom-metrics" placeholder="Users=users&#10;Storage=storage.used"></textarea>
+          <p class="ss-jf-hint">Homepage-style fallback for apps without a built-in adapter. Credentials stay on the dashboard server.</p>
+        </div>
+        <div id="settingsNextcloudAdd" class="ss-jf-block hidden">
+          <input id="settingsNewNextcloudToken" type="password" placeholder="Nextcloud NC-Token (preferred)" class="wizard-input small" autocomplete="off" />
+          <div class="ss-custom-auth-row">
+            <input id="settingsNewNextcloudUsername" type="text" placeholder="Nextcloud username" class="wizard-input small" autocomplete="off" />
+            <input id="settingsNewNextcloudPassword" type="password" placeholder="Nextcloud password" class="wizard-input small" autocomplete="off" />
+          </div>
+          <p class="ss-jf-hint">Homepage fields: free space, active users, files, and shares. Use an NC-Token or username/password.</p>
+        </div>
+        <div id="settingsArrAdd" class="ss-jf-block hidden">
+          <input id="settingsNewArrApiKey" type="password" placeholder="API key" class="wizard-input small" autocomplete="off" />
+          <p class="ss-jf-hint">Find the API key in Settings &rarr; General. Homepage metrics include wanted, queued, and library count.</p>
+        </div>
+        <div id="settingsQbittorrentAdd" class="ss-jf-block hidden">
+          <div class="ss-custom-auth-row">
+            <input id="settingsNewQbitUsername" type="text" placeholder="qBittorrent WebUI username" class="wizard-input small" autocomplete="off" />
+            <input id="settingsNewQbitPassword" type="password" placeholder="qBittorrent WebUI password" class="wizard-input small" autocomplete="off" />
+          </div>
+          <p class="ss-jf-hint">Homepage metrics include download/upload speed and seeding/leeching counts.</p>
+        </div>
       </div>
 
       <div class="tab-pane" data-pane="profile">

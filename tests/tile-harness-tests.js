@@ -349,6 +349,14 @@ const immichHtml = renderImmichInfo({ immich: { users: 4, photos: 1200, videos: 
 assert(immichHtml.includes(">1200<") && immichHtml.includes("500 MB"), "immich widget renders photo and storage metrics");
 const filteredImmichHtml = renderImmichInfo({ immich: { users: 4, photos: 1200, videos: 88, storageBytes: 1024 * 1024 * 500 } }, ["photos"]);
 assert(filteredImmichHtml.includes("Photos") && !filteredImmichHtml.includes("Users"), "immich widget respects selected metric fields");
+const customApiHtml = renderCustomApiInfo({ customApi: { metrics: [{ label: "Users", value: 4 }, { label: "Health", value: "ok" }] } });
+assert(customApiHtml.includes("Users") && customApiHtml.includes("Health") && customApiHtml.includes(">4<"), "custom API widget renders mapped metrics");
+const nextcloudHtml = renderNextcloudInfo({ nextcloud: { freeSpace: 1024 * 1024 * 1024, activeUsers: 3, files: 120, shares: 8 } });
+assert(nextcloudHtml.includes("Free space") && nextcloudHtml.includes("1.0 GB") && nextcloudHtml.includes(">3<"), "nextcloud widget renders server metrics");
+const arrHtml = renderArrInfo({ arr: { wanted: 2, queued: 1, library: 12, libraryLabel: "Series" } }, ["wanted", "series"]);
+assert(arrHtml.includes("Wanted") && arrHtml.includes("Series") && !arrHtml.includes("Queued"), "arr widget respects selected metrics");
+const qbitHtml = renderQbittorrentInfo({ qbittorrent: { download: 1024 * 1024, upload: 512, seed: 4, leech: 2 } });
+assert(qbitHtml.includes("Download") && qbitHtml.includes("1 MB/s") && qbitHtml.includes(">4<"), "qBittorrent widget renders transfer metrics");
 
 const jfCollected = rowJf.collect();
 assert(jfCollected.id === "r1" && jfCollected.type === "jellyfin" && jfCollected.docker === "jellyfin", "jellyfin row collect() carries id + type + docker");

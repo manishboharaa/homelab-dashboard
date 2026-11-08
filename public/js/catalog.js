@@ -43,6 +43,13 @@ const SERVICE_CATALOG = [
 
 const SERVICE_WIDGETS = [
   { type: "", label: "Generic service", fields: [] },
+  { type: "custom-api", label: "Custom API", fields: [] },
+  { type: "nextcloud", label: "Nextcloud", fields: ["freeSpace", "activeUsers", "files", "shares"] },
+  { type: "sonarr", label: "Sonarr", fields: ["wanted", "queued", "series"] },
+  { type: "radarr", label: "Radarr", fields: ["wanted", "queued", "movies"] },
+  { type: "lidarr", label: "Lidarr", fields: ["wanted", "queued", "artists"] },
+  { type: "prowlarr", label: "Prowlarr", fields: ["indexers"] },
+  { type: "qbittorrent", label: "qBittorrent", fields: ["download", "upload", "seed", "leech"] },
   { type: "jellyfin", label: "Jellyfin", fields: ["movies", "series", "episodes", "users", "streaming", "nowPlaying", "libraries"] },
   { type: "nginx-proxy-manager", label: "Nginx Proxy Manager", fields: ["hosts", "streams", "certificates", "deadHosts", "lastAction"] },
   { type: "immich", label: "Immich", fields: ["users", "photos", "videos", "storage"] }
