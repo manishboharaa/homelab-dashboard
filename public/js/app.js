@@ -1439,20 +1439,16 @@ function renderJellyfinInfo(d, span, fields) {
   if (!d) return `<div class="svc-info-hint">checking…</div>`;
   const jf = d.jellyfin || {};
   const n = span || 3;
-  const bits = [jf.os, jf.version, jf.arch].filter(Boolean);
-  const name = jf.serverName || "Jellyfin";
-  const metaLine = bits.length ? `<div class="svc-meta">${escapeHtml(name)} · ${escapeHtml(bits.join(" · "))}</div>` : "";
 
   if (jf.authError === "invalid-api-key") {
-    return `${metaLine}<div class="svc-widget-error">Jellyfin API key rejected · update it in Settings</div>`;
+    return `<div class="svc-widget-error">Jellyfin API key rejected · update it in Settings</div>`;
   }
   if (jf.authError === "missing-api-key") {
-    return `${metaLine}<div class="svc-widget-error">Add a Jellyfin API key in Settings to show library data</div>`;
+    return `<div class="svc-widget-error">Add a Jellyfin API key in Settings to show library data</div>`;
   }
 
   if (n < INFO_TIERS.counts) {
-    if (!jf.serverName && !jf.version) return `<div class="svc-info-hint">details unavailable</div>`;
-    return metaLine;
+    return `<div class="svc-info-hint">expand for library metrics</div>`;
   }
 
   const cells = [
@@ -1464,7 +1460,7 @@ function renderJellyfinInfo(d, span, fields) {
   ];
   const visibleCells = cells.filter((c) => widgetFieldEnabled(fields, c.key));
   const haveCounts = visibleCells.some((c) => c.value != null);
-  if (!haveCounts && !jf.serverName && !jf.version) {
+  if (!haveCounts) {
     return `<div class="svc-info-hint">details unavailable</div>`;
   }
 
@@ -1489,7 +1485,6 @@ function renderJellyfinInfo(d, span, fields) {
       )
       .join("")}</div></section>`;
   }
-  html += metaLine;
   return html;
 }
 

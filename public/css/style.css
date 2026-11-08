@@ -620,13 +620,12 @@ input { font-family: inherit; }
   overflow: hidden;
 }
 .service-tile.service-tall .service-more { flex: 1; flex-direction: column; justify-content: space-between; align-items: stretch; }
-.service-tile.service-tall .svc-cell-value { font-size: 17px; }
-.service-tile.service-tall .svc-info-grid { }
-.service-tile.service-tall .svc-cell { min-width: 0; max-width: none; flex: none; padding: 10px 12px; }
+.service-tile.service-tall .svc-cell-value { font-size: clamp(14px, 1.8vw, 18px); }
+.service-tile.service-tall .svc-cell { min-width: 0; max-width: none; flex: none; padding: 9px 10px; }
 .service-wide .service-more { flex-direction: column; align-items: stretch; }
 .service-wide .svc-info-grid,
 .service-wide .svc-libs,
-.service-wide .svc-meta { align-self: flex-start; }
+.service-wide .svc-meta { align-self: stretch; }
 .service-wide .svc-cell { flex: none; min-width: 0; }
 .service-tile.resizing { transform: none; cursor: nwse-resize; transition: none; }
 @media (max-width: 900px) {
@@ -682,7 +681,7 @@ input { font-family: inherit; }
 .service-ping.online { color: var(--accent); }
 .service-ping.offline { color: var(--danger); }
 
-.service-more { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.service-more { min-width: 0; display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px 10px; flex: 1 1 auto; }
 .service-wide .service-uptime { display: none; }
 .service-uptime .svc-up { color: var(--accent); }
 .service-uptime .svc-down { color: var(--danger); }
@@ -695,7 +694,7 @@ input { font-family: inherit; }
 .service-info { display: contents; }
 .svc-widget-section {
   display: grid;
-  gap: 5px;
+  gap: 7px;
   width: 100%;
 }
 .svc-widget-section-title {
@@ -720,15 +719,16 @@ input { font-family: inherit; }
 
 .svc-info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr));
   width: 100%;
   gap: 6px;
+  align-items: stretch;
 }
 .svc-cell {
   background: var(--panel-raised);
   border: 1px solid var(--border-soft);
   border-radius: 2px;
-  padding: 4px 6px;
+  padding: 8px 7px;
   min-width: 0;
   max-width: none;
   width: 100%;
@@ -747,9 +747,15 @@ input { font-family: inherit; }
 .svc-cell.wide { grid-column: 1 / -1; }
 .svc-cell-value {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: clamp(13px, 1.6vw, 17px);
   font-weight: 700;
   color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .svc-cell-label {
   font-size: 9px;
@@ -757,6 +763,11 @@ input { font-family: inherit; }
   letter-spacing: 0.06em;
   color: var(--text-dim);
   margin-top: 1px;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .svc-meta {
   font-size: 10.5px;

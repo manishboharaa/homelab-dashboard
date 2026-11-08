@@ -58,7 +58,7 @@ assert(moreLg.innerHTML.includes("The Expanse"), "jellyfin now-playing title");
 assert(moreLg.innerHTML.includes("Networkbohara"), "jellyfin now-playing user");
 assert(moreLg.innerHTML.includes("svc-now-playing"), "jellyfin now-playing section");
 assert(!moreLg.innerHTML.includes("Libraries"), "jellyfin libraries label not in level-3 core fields");
-assert(moreLg.innerHTML.includes("10.9.11"), "jellyfin version in meta");
+assert(!moreLg.innerHTML.includes("10.9.11") && !moreLg.innerHTML.includes("Linux"), "jellyfin hides server version metadata");
 
 applySpan(tileLg, jf, 1);
 eq(tileLg.dataset.span, "1", "applySpan sets span 1");
@@ -171,7 +171,7 @@ const tileJp = makeServiceTile(jfPublic);
 applySpan(tileJp, jfPublic, 3);
 const jpMore = tileJp.querySelector(".service-more").innerHTML;
 assert(jpMore.includes("service-info"), "jellyfin no-key keeps widget error state");
-assert(jpMore.includes("Media-Server"), "jellyfin no-key keeps public server meta");
+assert(!jpMore.includes("Media-Server") && jpMore.includes("API key"), "jellyfin no-key shows only credential guidance");
 assert(!jpMore.includes("Movies"), "jellyfin no-key hides counts");
 assert(jpMore.includes("Add a Jellyfin API key"), "jellyfin no-key explains missing widget data");
 
