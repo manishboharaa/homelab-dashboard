@@ -50,6 +50,10 @@ const SERVICE_WIDGETS = [
   { type: "lidarr", label: "Lidarr", fields: ["wanted", "queued", "artists"] },
   { type: "prowlarr", label: "Prowlarr", fields: ["indexers"] },
   { type: "qbittorrent", label: "qBittorrent", fields: ["download", "upload", "seed", "leech"] },
+  { type: "plex", label: "Plex", fields: ["streaming", "libraries"] },
+  { type: "emby", label: "Emby", fields: ["movies", "series", "episodes", "users", "streaming", "libraries"] },
+  { type: "overseerr", label: "Overseerr", fields: ["requests"] },
+  { type: "portainer", label: "Portainer", fields: ["endpoints", "stacks"] },
   { type: "jellyfin", label: "Jellyfin", fields: ["movies", "series", "episodes", "users", "streaming", "nowPlaying", "libraries"] },
   { type: "nginx-proxy-manager", label: "Nginx Proxy Manager", fields: ["hosts", "streams", "certificates", "deadHosts", "lastAction"] },
   { type: "immich", label: "Immich", fields: ["users", "photos", "videos", "storage"] }

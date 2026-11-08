@@ -1587,6 +1587,15 @@ function renderQbittorrentInfo(d, fields) {
   return `<section class="svc-widget-section"><div class="svc-widget-section-title">qBittorrent</div><div class="svc-info-grid">${cells.map((cell) => svcCell(cell.label, cell.value)).join("")}</div></section>`;
 }
 
+function renderSimpleApiInfo(d, key, title, cells, errorName) {
+  if (!d) return `<div class="svc-info-hint">checking…</div>`;
+  const data = d[key] || {};
+  if (data.authError === "missing-api-key") return `<div class="svc-widget-error">Add an API key in Settings</div>`;
+  if (data.authError === "invalid-api-key") return `<div class="svc-widget-error">${errorName || title} API key rejected</div>`;
+  if (data.error) return `<div class="svc-widget-error">${escapeHtml(data.error)}</div>`;
+  return `<section class="svc-widget-section"><div class="svc-widget-section-title">${escapeHtml(title)}</div><div class="svc-info-grid">${cells.filter((cell) => widgetFieldEnabled(d.widgetFields, cell.key)).map((cell) => svcCell(cell.label, cell.value)).join("")}</div></section>`;
+}
+
 function renderTileInfo(tile, svc, span) {
   const more = tile.querySelector(".service-more");
   if (!more) return;
@@ -1634,6 +1643,25 @@ function renderTileInfo(tile, svc, span) {
   }
   if (svc.type === "qbittorrent" && svc.details) {
     html += `<div class="service-info">${renderQbittorrentInfo(d, svc.widgetFields)}</div>`;
+  }
+  if (svc.type === "plex" && svc.details) {
+    const px = d?.plex || {};
+    html += `<div class="service-info">${renderSimpleApiInfo({ ...d, widgetFields: svc.widgetFields }, "plex", "Plex", [
+      { key: "streaming", label: "Streaming", value: px.streaming }, { key: "libraries", label: "Libraries", value: px.libraries }
+    ])}</div>`;
+  }
+  if (svc.type === "emby" && svc.details) {
+    html += `<div class="service-info">${renderJellyfinInfo({ ...d, jellyfin: d.emby }, n, svc.widgetFields)}</div>`;
+  }
+  if (svc.type === "overseerr" && svc.details) {
+    const ov = d?.overseerr || {};
+    html += `<div class="service-info">${renderSimpleApiInfo({ ...d, widgetFields: svc.widgetFields }, "overseerr", "Overseerr", [{ key: "requests", label: "Requests", value: ov.requests }])}</div>`;
+  }
+  if (svc.type === "portainer" && svc.details) {
+    const pt = d?.portainer || {};
+    html += `<div class="service-info">${renderSimpleApiInfo({ ...d, widgetFields: svc.widgetFields }, "portainer", "Portainer", [
+      { key: "endpoints", label: "Endpoints", value: pt.endpoints }, { key: "stacks", label: "Stacks", value: pt.stacks }
+    ])}</div>`;
   }
   more.innerHTML = html;
 }
@@ -1916,7 +1944,8 @@ function makeServiceRow(svc, opts) {
   bottom.appendChild(catField.select);
   bottom.appendChild(catField.input);
 
-  const isJelly = svc.type === "jellyfin" || String(svc.name || "").trim().toLowerCase() === "jellyfin";
+  const isJelly = svc.type === "jellyfin" || svc.type === "emby"
+    || ["jellyfin", "emby"].includes(String(svc.name || "").trim().toLowerCase());
   let dockerInput = null;
   let detailsInput = null;
   let apiKeyInput = null;
@@ -1945,8 +1974,8 @@ function makeServiceRow(svc, opts) {
     apiKeyInput = document.createElement("input");
     apiKeyInput.className = "ss-input ss-api-input";
     apiKeyInput.value = svc.apiKey || "";
-    apiKeyInput.placeholder = "Jellyfin API key";
-    apiKeyInput.title = "Jellyfin API key — Dashboard → API Keys → Add API Key";
+     apiKeyInput.placeholder = svc.type === "emby" ? "Emby API key" : "Jellyfin API key";
+     apiKeyInput.title = `${svc.type === "emby" ? "Emby" : "Jellyfin"} API key`;
     apiKeyInput.disabled = isRemoved;
     extra.appendChild(apiKeyInput);
 
@@ -2105,7 +2134,24 @@ function makeServiceRow(svc, opts) {
     extra.appendChild(qbitPasswordInput);
     row.appendChild(extra);
   }
-  const widgetType = isJelly ? "jellyfin" : isNginx ? "nginx-proxy-manager" : isImmich ? "immich" : isCustomApi ? "custom-api" : isNextcloud ? "nextcloud" : isArr ? svc.type : isQbit ? "qbittorrent" : null;
+  const isMediaApi = ["plex", "overseerr", "portainer"].includes(svc.type);
+  let mediaApiKeyInput = null;
+  if (isMediaApi) {
+    const extra = document.createElement("div");
+    extra.className = "ss-row-extra";
+    mediaApiKeyInput = document.createElement("input");
+    mediaApiKeyInput.className = "ss-input ss-api-input";
+    mediaApiKeyInput.type = "password";
+    mediaApiKeyInput.value = svc.apiKey || "";
+    mediaApiKeyInput.placeholder = "API key or token";
+    mediaApiKeyInput.disabled = isRemoved;
+    extra.appendChild(mediaApiKeyInput);
+    row.appendChild(extra);
+  }
+  const widgetType = isJelly ? (svc.type === "emby" ? "emby" : "jellyfin")
+    : isNginx ? "nginx-proxy-manager" : isImmich ? "immich" : isCustomApi ? "custom-api"
+    : isNextcloud ? "nextcloud" : isArr ? svc.type : isQbit ? "qbittorrent"
+    : isMediaApi ? svc.type : null;
   if (widgetType) {
     const widgetFields = makeWidgetFieldsEditor(widgetType, svc.widgetFields, isRemoved);
     if (widgetFields.element) {
@@ -2125,7 +2171,7 @@ function makeServiceRow(svc, opts) {
     };
     if (isJelly) {
       updated.docker = dockerInput.value.trim();
-      updated.type = "jellyfin";
+      updated.type = svc.type === "emby" || String(updated.name).trim().toLowerCase() === "emby" ? "emby" : "jellyfin";
       updated.details = detailsInput.checked;
       updated.apiKey = detailsInput.checked ? apiKeyInput.value.trim() : "";
     }
@@ -2176,6 +2222,11 @@ function makeServiceRow(svc, opts) {
         username: qbitUsernameInput.value.trim(),
         password: qbitPasswordInput.value
       };
+    }
+    if (isMediaApi) {
+      updated.type = svc.type;
+      updated.details = true;
+      updated.apiKey = mediaApiKeyInput.value.trim();
     }
     return updated;
   };
@@ -2283,6 +2334,10 @@ function selectedWidgetType() {
   if (name === "lidarr") return "lidarr";
   if (name === "prowlarr") return "prowlarr";
   if (name === "qbittorrent") return "qbittorrent";
+  if (name === "plex") return "plex";
+  if (name === "emby") return "emby";
+  if (name === "overseerr" || name === "jellyseerr") return "overseerr";
+  if (name === "portainer") return "portainer";
   return "";
 }
 
@@ -2297,6 +2352,10 @@ function availableServiceWidgets() {
     { type: "lidarr", label: "Lidarr", fields: [] },
     { type: "prowlarr", label: "Prowlarr", fields: [] },
     { type: "qbittorrent", label: "qBittorrent", fields: [] },
+    { type: "plex", label: "Plex", fields: [] },
+    { type: "emby", label: "Emby", fields: [] },
+    { type: "overseerr", label: "Overseerr", fields: [] },
+    { type: "portainer", label: "Portainer", fields: [] },
     { type: "sonarr", label: "Sonarr", fields: [] },
     { type: "radarr", label: "Radarr", fields: [] },
     { type: "jellyfin", label: "Jellyfin", fields: [] },
@@ -2312,6 +2371,7 @@ const WIDGET_FIELD_LABELS = {
   freeSpace: "Free space", activeUsers: "Active users", files: "Files", shares: "Shares",
   wanted: "Wanted", queued: "Queued", series: "Series", movies: "Movies", artists: "Artists", indexers: "Indexers",
   download: "Download", upload: "Upload", seed: "Seeding", leech: "Leeching"
+  , requests: "Requests", endpoints: "Endpoints", stacks: "Stacks"
 };
 
 function makeWidgetFieldsEditor(widget, selectedFields, disabled) {
@@ -2375,6 +2435,7 @@ function updateWidgetAddMenu() {
   document.getElementById("settingsNextcloudAdd")?.classList.toggle("hidden", widget !== "nextcloud");
   document.getElementById("settingsArrAdd")?.classList.toggle("hidden", widget !== "sonarr" && widget !== "radarr");
   document.getElementById("settingsQbittorrentAdd")?.classList.toggle("hidden", widget !== "qbittorrent");
+  document.getElementById("settingsMediaApiAdd")?.classList.toggle("hidden", !["plex", "overseerr", "portainer"].includes(widget));
   const jfDetails = document.getElementById("settingsNewDetails");
   document.getElementById("settingsJellyfinApiRow")?.classList.toggle("hidden", widget !== "jellyfin" || !jfDetails?.checked);
   const imDetails = document.getElementById("settingsNewImmichDetails");
@@ -2423,7 +2484,7 @@ function setupSettingsServiceSuggest() {
         box.classList.add("hidden");
         renderSettingsIconPreview();
         const widgetSelect = document.getElementById("settingsNewWidget");
-        const inferred = s.name.toLowerCase() === "jellyfin" ? "jellyfin" : s.name.toLowerCase().includes("nginx") ? "nginx-proxy-manager" : s.name.toLowerCase() === "immich" ? "immich" : s.name.toLowerCase() === "nextcloud" ? "nextcloud" : s.name.toLowerCase() === "sonarr" ? "sonarr" : s.name.toLowerCase() === "radarr" ? "radarr" : s.name.toLowerCase() === "lidarr" ? "lidarr" : s.name.toLowerCase() === "prowlarr" ? "prowlarr" : s.name.toLowerCase() === "qbittorrent" ? "qbittorrent" : "generic";
+        const inferred = s.name.toLowerCase() === "jellyfin" ? "jellyfin" : s.name.toLowerCase().includes("nginx") ? "nginx-proxy-manager" : s.name.toLowerCase() === "immich" ? "immich" : s.name.toLowerCase() === "nextcloud" ? "nextcloud" : s.name.toLowerCase() === "sonarr" ? "sonarr" : s.name.toLowerCase() === "radarr" ? "radarr" : s.name.toLowerCase() === "lidarr" ? "lidarr" : s.name.toLowerCase() === "prowlarr" ? "prowlarr" : s.name.toLowerCase() === "qbittorrent" ? "qbittorrent" : s.name.toLowerCase() === "plex" ? "plex" : s.name.toLowerCase() === "emby" ? "emby" : s.name.toLowerCase() === "overseerr" || s.name.toLowerCase() === "jellyseerr" ? "overseerr" : s.name.toLowerCase() === "portainer" ? "portainer" : "generic";
         if (widgetSelect) widgetSelect.value = inferred;
         updateWidgetAddMenu();
         const urlInput = document.getElementById("settingsNewUrl");
@@ -2484,19 +2545,21 @@ function initSettingsModal() {
     const icon = settingsPick?.icon || null;
     const category = (usingCustom ? catCustom.value.trim() : catInput?.value.trim()) || "Other";
     const widgetType = selectedWidgetType();
-    const isJf = widgetType === "jellyfin";
+    const isJf = widgetType === "jellyfin" || widgetType === "emby";
     const isNx = widgetType === "nginx-proxy-manager";
     const isImmich = widgetType === "immich";
     const isCustomApi = widgetType === "custom-api";
     const isNextcloud = widgetType === "nextcloud";
     const isArr = ["sonarr", "radarr", "lidarr", "prowlarr"].includes(widgetType);
     const isQbit = widgetType === "qbittorrent";
+    const isMediaApi = ["plex", "overseerr", "portainer"].includes(widgetType);
     const details = isJf && !!newDetails?.checked;
     const immichDetails = isImmich && !!document.getElementById("settingsNewImmichDetails")?.checked;
     const apiKey = details
       ? (document.getElementById("settingsNewApiKey")?.value || "").trim()
       : immichDetails ? (document.getElementById("settingsNewImmichApiKey")?.value || "").trim()
-      : isArr ? (document.getElementById("settingsNewArrApiKey")?.value || "").trim() : "";
+      : isArr ? (document.getElementById("settingsNewArrApiKey")?.value || "").trim()
+      : isMediaApi ? (document.getElementById("settingsNewMediaApiKey")?.value || "").trim() : "";
     const npmEmail = isNx ? (document.getElementById("settingsNewNpmEmail")?.value || "").trim() : "";
     const npmPassword = isNx ? (document.getElementById("settingsNewNpmPassword")?.value || "").trim() : "";
     const widgetFields = [...document.querySelectorAll("#settingsNewWidgetFields [data-widget-field]:checked")].map((el) => el.dataset.widgetField);
@@ -2507,7 +2570,7 @@ function initSettingsModal() {
     stagedServices.added.push({
       id: "new-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       name, url, icon, category,
-       type: widgetType || null, details: details || immichDetails || isCustomApi || isNextcloud || isArr || isQbit, apiKey, widgetFields,
+       type: widgetType || null, details: details || immichDetails || isCustomApi || isNextcloud || isArr || isQbit || isMediaApi, apiKey, widgetFields,
        widgetConfig: isCustomApi ? {
          endpoint: document.getElementById("settingsNewCustomEndpoint")?.value.trim() || "",
          authHeader: document.getElementById("settingsNewCustomAuthHeader")?.value.trim() || "",
@@ -2548,6 +2611,8 @@ function initSettingsModal() {
     });
     const arrApiInput = document.getElementById("settingsNewArrApiKey");
     if (arrApiInput) arrApiInput.value = "";
+    const mediaApiInput = document.getElementById("settingsNewMediaApiKey");
+    if (mediaApiInput) mediaApiInput.value = "";
     ["settingsNewQbitUsername", "settingsNewQbitPassword"].forEach((id) => {
       const input = document.getElementById(id);
       if (input) input.value = "";

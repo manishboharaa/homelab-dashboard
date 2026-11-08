@@ -105,7 +105,7 @@ function cleanService(s) {
     size: normalizeSize(s.size, s.type === "jellyfin" ? 6 : 1),
     rows: normalizeRows(s.rows),
     docker: s.docker || "",
-    type: ["jellyfin", "nginx-proxy-manager", "immich", "custom-api", "nextcloud", "sonarr", "radarr", "lidarr", "prowlarr", "qbittorrent"].includes(s.type) ? s.type : null,
+    type: ["jellyfin", "emby", "plex", "nginx-proxy-manager", "immich", "custom-api", "nextcloud", "sonarr", "radarr", "lidarr", "prowlarr", "qbittorrent", "overseerr", "portainer"].includes(s.type) ? s.type : null,
     details: !!s.details,
     apiKey: s.apiKey || "",
     widgetFields: Array.isArray(s.widgetFields) ? s.widgetFields.filter((x) => typeof x === "string") : [],
@@ -261,30 +261,33 @@ async function getDockerContainers() {
 
 const jellyfinAgent = new https.Agent({ rejectUnauthorized: false });
 
-function jellyfinRequest(baseUrl, apiKey, agent) {
+function jellyfinRequest(baseUrl, apiKey, agent, tokenHeader = "Authorization") {
   const o = { timeout: PROBE_TIMEOUT };
   if (/^https:/i.test(baseUrl)) o.agent = agent;
-  if (apiKey) o.headers = { Authorization: `MediaBrowser Token=${apiKey}` };
+  if (apiKey) o.headers = tokenHeader === "X-Emby-Token"
+    ? { "X-Emby-Token": apiKey }
+    : { Authorization: `MediaBrowser Token=${apiKey}` };
   return o;
 }
 
-async function fetchJellyfinInfo(baseUrl, apiKey, span) {
+async function fetchJellyfinInfo(baseUrl, apiKey, span, type = "jellyfin") {
   const base = normalizeUrl(baseUrl).replace(/\/$/, "");
   if (!base) return {};
   const wantLibs = span >= 5;
+  const tokenHeader = type === "emby" ? "X-Emby-Token" : "Authorization";
   const out = {};
   const settled = await Promise.allSettled([
-    fetch(`${base}/System/Info/Public`, jellyfinRequest(base, apiKey, jellyfinAgent)),
+    fetch(`${base}/System/Info/Public`, jellyfinRequest(base, apiKey, jellyfinAgent, tokenHeader)),
     apiKey
-      ? fetch(`${base}/Items/Counts`, jellyfinRequest(base, apiKey, jellyfinAgent))
+       ? fetch(`${base}/Items/Counts`, jellyfinRequest(base, apiKey, jellyfinAgent, tokenHeader))
       : Promise.resolve(null),
     apiKey
-      ? fetch(`${base}/Sessions`, jellyfinRequest(base, apiKey, jellyfinAgent))
+       ? fetch(`${base}/Sessions`, jellyfinRequest(base, apiKey, jellyfinAgent, tokenHeader))
       : Promise.resolve(null),
     apiKey
-      ? fetch(`${base}/Library/MediaFolders`, jellyfinRequest(base, apiKey, jellyfinAgent))
+       ? fetch(`${base}/Library/MediaFolders`, jellyfinRequest(base, apiKey, jellyfinAgent, tokenHeader))
       : Promise.resolve(null),
-    apiKey ? fetch(`${base}/Users`, jellyfinRequest(base, apiKey, jellyfinAgent)) : Promise.resolve(null)
+     apiKey ? fetch(`${base}/Users`, jellyfinRequest(base, apiKey, jellyfinAgent, tokenHeader)) : Promise.resolve(null)
   ]);
   const [pub, counts, sessions, folders, users] = settled;
 
@@ -344,7 +347,7 @@ async function fetchJellyfinInfo(baseUrl, apiKey, span) {
     const libs = folderItems.slice(0, 8).filter((x) => x && x.Id);
     const tot = await Promise.allSettled(
       libs.map((x) =>
-        fetch(`${base}/Items?ParentId=${encodeURIComponent(x.Id)}&Recursive=true&Limit=1`, jellyfinRequest(base, apiKey, jellyfinAgent))
+        fetch(`${base}/Items?ParentId=${encodeURIComponent(x.Id)}&Recursive=true&Limit=1`, jellyfinRequest(base, apiKey, jellyfinAgent, tokenHeader))
       )
     );
     out.libraryTotals = [];
@@ -548,6 +551,47 @@ async function fetchQbittorrentInfo(baseUrl, widgetConfig) {
   };
 }
 
+async function fetchPlexInfo(baseUrl, apiKey) {
+  const base = normalizeUrl(baseUrl).replace(/\/$/, "");
+  if (!base || !apiKey) return { authError: apiKey ? null : "missing-api-key" };
+  const headers = { "X-Plex-Token": apiKey, Accept: "application/xml" };
+  const [sessions, libraries] = await Promise.all([
+    fetch(`${base}/status/sessions`, { headers, timeout: PROBE_TIMEOUT }),
+    fetch(`${base}/library/sections`, { headers, timeout: PROBE_TIMEOUT })
+  ]);
+  if ([sessions, libraries].some((response) => response.status === 401 || response.status === 403)) return { authError: "invalid-api-key" };
+  if (!sessions.ok || !libraries.ok) return { error: "Plex API request failed" };
+  const [sessionXml, libraryXml] = await Promise.all([sessions.text(), libraries.text()]);
+  return {
+    streaming: (sessionXml.match(/<Video\b/g) || []).length,
+    libraries: (libraryXml.match(/<Directory\b/g) || []).length
+  };
+}
+
+async function fetchOverseerrInfo(baseUrl, apiKey) {
+  const base = normalizeUrl(baseUrl).replace(/\/$/, "");
+  if (!base || !apiKey) return { authError: apiKey ? null : "missing-api-key" };
+  const response = await fetch(`${base}/api/v1/request?take=1&skip=0`, { headers: { "X-Api-Key": apiKey }, timeout: PROBE_TIMEOUT });
+  if (response.status === 401 || response.status === 403) return { authError: "invalid-api-key" };
+  if (!response.ok) return { error: `Overseerr returned HTTP ${response.status}` };
+  const data = await response.json();
+  return { requests: data.pageInfo?.results ?? data.totalResults ?? null };
+}
+
+async function fetchPortainerInfo(baseUrl, apiKey) {
+  const base = normalizeUrl(baseUrl).replace(/\/$/, "");
+  if (!base || !apiKey) return { authError: apiKey ? null : "missing-api-key" };
+  const headers = { Authorization: `Bearer ${apiKey}` };
+  const [endpoints, stacks] = await Promise.all([
+    fetch(`${base}/api/endpoints`, { headers, timeout: PROBE_TIMEOUT }),
+    fetch(`${base}/api/stacks`, { headers, timeout: PROBE_TIMEOUT })
+  ]);
+  if ([endpoints, stacks].some((response) => response.status === 401 || response.status === 403)) return { authError: "invalid-api-key" };
+  if (!endpoints.ok || !stacks.ok) return { error: "Portainer API request failed" };
+  const [endpointData, stackData] = await Promise.all([endpoints.json(), stacks.json()]);
+  return { endpoints: Array.isArray(endpointData) ? endpointData.length : null, stacks: Array.isArray(stackData) ? stackData.length : null };
+}
+
 app.get("/api/services/:id/info", async (req, res) => {
   const cfg = readConfig();
   const svc = cfg.services.find((s) => s.id === req.params.id);
@@ -593,6 +637,13 @@ app.get("/api/services/:id/info", async (req, res) => {
       const level = Math.min(6, Math.max(1, span + rows - 1));
       result.jellyfin = await fetchJellyfinInfo(svc.url, svc.apiKey, level);
     }
+    if (svc.type === "emby" && svc.details && svc.url) {
+      const span = parseInt(req.query.span, 10) || 1;
+      const rows = parseInt(req.query.rows, 10) || 1;
+      const level = Math.min(6, Math.max(1, span + rows - 1));
+      result.emby = await fetchJellyfinInfo(svc.url, svc.apiKey, level, "emby");
+    }
+    if (svc.type === "plex" && svc.details && svc.url) result.plex = await fetchPlexInfo(svc.url, svc.apiKey);
     if (svc.type === "nginx-proxy-manager" && svc.npmEmail && svc.npmPassword && svc.url) {
       result.nginx = await fetchNginxInfo(svc.url, svc.npmEmail, svc.npmPassword);
     }
@@ -614,6 +665,8 @@ app.get("/api/services/:id/info", async (req, res) => {
     if (svc.type === "qbittorrent" && svc.details && svc.url) {
       result.qbittorrent = await fetchQbittorrentInfo(svc.url, svc.widgetConfig);
     }
+    if (svc.type === "overseerr" && svc.details && svc.url) result.overseerr = await fetchOverseerrInfo(svc.url, svc.apiKey);
+    if (svc.type === "portainer" && svc.details && svc.url) result.portainer = await fetchPortainerInfo(svc.url, svc.apiKey);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: "failed to read service info", detail: String(err) });

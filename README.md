@@ -97,8 +97,9 @@ No account, no cloud dependency, no API keys required to get started.
   Services (email + password fields appear automatically for nginx
    services).
 - **Service integrations** — connect common homelab apps to show useful live
-  metrics inside their tiles: Jellyfin, Immich, Nginx Proxy Manager,
-  Nextcloud, Sonarr, Radarr, Lidarr, Prowlarr, and qBittorrent.
+  metrics inside their tiles: Jellyfin, Emby, Plex, Immich, Nginx Proxy
+  Manager, Nextcloud, Sonarr, Radarr, Lidarr, Prowlarr, qBittorrent,
+  Overseerr, and Portainer.
 - **Custom API services** — connect an app that does not have a built-in
   integration by entering an endpoint, optional authentication header, and
   JSON paths for the metrics you want to display.
@@ -201,7 +202,7 @@ main view, and everything from the wizard is editable from Settings.
 | DNS stats | Status, queries today, blocked today, blocked %, blocklist size + a 24h graph (always visible); click the **▾** arrow for Top Clients / Top Blocked / Top Allowed, which scroll inside the panel — for Pi-hole and/or AdGuard Home (only shown if configured) |
 | Proxmox | Nodes, VMs/CTs running, total guests + a collapsible list of every VM/LXC. Click a guest's **▸** for its IP address(es), disk usage, network I/O, and uptime (only shown if configured) |
 | Nginx Proxy Manager | Proxy hosts, streams, certs, dead hosts, last audit action — info grows as the tile expands (only shown if configured with email + password) |
-| Service integrations | Built-in metrics for Jellyfin, Immich, Nginx Proxy Manager, Nextcloud, Sonarr, Radarr, Lidarr, Prowlarr, and qBittorrent |
+| Service integrations | Built-in metrics for Jellyfin, Emby, Plex, Immich, Nginx Proxy Manager, Nextcloud, Sonarr, Radarr, Lidarr, Prowlarr, qBittorrent, Overseerr, and Portainer |
 | Custom API service | User-defined metrics read from a JSON endpoint |
 | Services grid | Your added services — click a tile to open it in a new tab; **drag** a tile to reorder the grid or move it to another category. **+ Add service** opens Settings → Services |
 | Open Ports | Every listening port on the host with process name and PID |
@@ -436,6 +437,10 @@ for that integration, so you can keep each expanded tile focused.
 | Lidarr | API key | Wanted, queued, artists |
 | Prowlarr | API key | Indexers |
 | qBittorrent | WebUI username + password | Download/upload speed, seeding, leeching |
+| Emby | API key | Movies, series, episodes, active streams, users, libraries |
+| Plex | API token | Active streams, libraries |
+| Overseerr | API key | Requests |
+| Portainer | API token | Endpoints, stacks |
 
 Credentials are sent by the dashboard server to the configured service. They
 are not placed in the service tile link.
