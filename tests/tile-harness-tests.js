@@ -357,6 +357,20 @@ const arrHtml = renderArrInfo({ arr: { wanted: 2, queued: 1, library: 12, librar
 assert(arrHtml.includes("Wanted") && arrHtml.includes("Series") && !arrHtml.includes("Queued"), "arr widget respects selected metrics");
 const qbitHtml = renderQbittorrentInfo({ qbittorrent: { download: 1024 * 1024, upload: 512, seed: 4, leech: 2 } });
 assert(qbitHtml.includes("Download") && qbitHtml.includes("1 MB/s") && qbitHtml.includes(">4<"), "qBittorrent widget renders transfer metrics");
+const plexHtml = renderSimpleApiInfo({ plex: { streaming: 2, libraries: 4 }, widgetFields: ["streaming", "libraries"] }, "plex", "Plex", [
+  { key: "streaming", label: "Streaming", value: 2 }, { key: "libraries", label: "Libraries", value: 4 }
+]);
+assert(plexHtml.includes("Streaming") && plexHtml.includes(">2<") && plexHtml.includes(">4<"), "Plex widget renders metrics");
+const embyHtml = renderJellyfinInfo({ jellyfin: { movies: 10, series: 3, episodes: 20, activeSessions: 1 } }, 3, ["movies", "series", "episodes", "streaming"]);
+assert(embyHtml.includes("Movies") && embyHtml.includes(">10<") && embyHtml.includes("Streaming"), "Emby widget renders Jellyfin-compatible metrics");
+const overseerrHtml = renderSimpleApiInfo({ overseerr: { requests: 7 }, widgetFields: ["requests"] }, "overseerr", "Overseerr", [
+  { key: "requests", label: "Requests", value: 7 }
+]);
+assert(overseerrHtml.includes("Requests") && overseerrHtml.includes(">7<"), "Overseerr widget renders requests");
+const portainerHtml = renderSimpleApiInfo({ portainer: { endpoints: 2, stacks: 5 }, widgetFields: ["endpoints", "stacks"] }, "portainer", "Portainer", [
+  { key: "endpoints", label: "Endpoints", value: 2 }, { key: "stacks", label: "Stacks", value: 5 }
+]);
+assert(portainerHtml.includes("Endpoints") && portainerHtml.includes("Stacks") && portainerHtml.includes(">5<"), "Portainer widget renders metrics");
 
 const jfCollected = rowJf.collect();
 assert(jfCollected.id === "r1" && jfCollected.type === "jellyfin" && jfCollected.docker === "jellyfin", "jellyfin row collect() carries id + type + docker");

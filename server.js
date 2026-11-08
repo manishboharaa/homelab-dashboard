@@ -1497,7 +1497,7 @@ function shutdown(reason, code = 0) {
   console.log(`${reason} received, shutting down gracefully...`);
   const forceTimer = setTimeout(() => process.exit(code), 10000);
   forceTimer.unref();
-  server.close(() => {
+  server?.close(() => {
     console.log("Server closed.");
     process.exit(code);
   });
@@ -1506,7 +1506,12 @@ function shutdown(reason, code = 0) {
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
-ensureConfig();
-const server = app.listen(PORT, () => {
-  console.log(`Homelab dashboard listening on port ${PORT}`);
-});
+let server;
+if (require.main === module) {
+  ensureConfig();
+  server = app.listen(PORT, () => {
+    console.log(`Homelab dashboard listening on port ${PORT}`);
+  });
+}
+
+module.exports = { app, parseDockerPort };

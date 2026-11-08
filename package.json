@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/tile-harness.js"
+    "test": "node tests/tile-harness.js && node tests/server-unit-tests.js"
   },
   "dependencies": {
     "check-disk-space": "^3.4.0",
