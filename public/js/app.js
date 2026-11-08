@@ -1408,6 +1408,25 @@ function svcCell(label, value) {
   return `<div class="svc-cell"><div class="svc-cell-value">${escapeHtml(String(v))}</div><div class="svc-cell-label">${escapeHtml(String(label))}</div></div>`;
 }
 
+function renderNowPlaying(items) {
+  if (!Array.isArray(items)) return "";
+  const playing = items.filter((item) => item && item.title);
+  const content = playing.length
+    ? playing
+    .map((item) => {
+      const title = item.seriesName && item.seriesName !== item.title
+        ? `${item.seriesName} · ${item.title}`
+        : item.title;
+      const details = [item.user, item.type, item.progressPct != null ? `${item.progressPct}%` : null, item.paused ? "paused" : null]
+        .filter(Boolean)
+        .join(" · ");
+      return `<div class="svc-playing-row"><div class="svc-playing-title">${escapeHtml(title)}</div>${details ? `<div class="svc-playing-meta">${escapeHtml(details)}</div>` : ""}</div>`;
+    })
+    .join("")
+    : `<div class="svc-widget-empty">Nothing playing</div>`;
+  return `<section class="svc-widget-section svc-now-playing"><div class="svc-widget-section-title">Now playing</div>${content}</section>`;
+}
+
 function renderJellyfinInfo(d, span) {
   if (!d) return `<div class="svc-info-hint">checking…</div>`;
   const jf = d.jellyfin || {};
@@ -1415,6 +1434,13 @@ function renderJellyfinInfo(d, span) {
   const bits = [jf.os, jf.version, jf.arch].filter(Boolean);
   const name = jf.serverName || "Jellyfin";
   const metaLine = bits.length ? `<div class="svc-meta">${escapeHtml(name)} · ${escapeHtml(bits.join(" · "))}</div>` : "";
+
+  if (jf.authError === "invalid-api-key") {
+    return `${metaLine}<div class="svc-widget-error">Jellyfin API key rejected · update it in Settings</div>`;
+  }
+  if (jf.authError === "missing-api-key") {
+    return `${metaLine}<div class="svc-widget-error">Add a Jellyfin API key in Settings to show library data</div>`;
+  }
 
   if (n < INFO_TIERS.counts) {
     if (!jf.serverName && !jf.version) return `<div class="svc-info-hint">details unavailable</div>`;
@@ -1433,7 +1459,7 @@ function renderJellyfinInfo(d, span) {
     return `<div class="svc-info-hint">details unavailable</div>`;
   }
 
-  let html = `<div class="svc-info-grid">`;
+  let html = `<section class="svc-widget-section"><div class="svc-widget-section-title">Library</div><div class="svc-info-grid">`;
   if (haveCounts) {
     cells.forEach((c) => (html += svcCell(c.label, c.value)));
     if (n >= INFO_TIERS.extended && jf.songs > 0) {
@@ -1442,15 +1468,17 @@ function renderJellyfinInfo(d, span) {
   } else {
     html += `<div class="svc-cell wide"><div class="svc-cell-value">${escapeHtml(name)}</div><div class="svc-cell-label">server</div></div>`;
   }
-  html += `</div>`;
+  html += `</div></section>`;
+
+  html += renderNowPlaying(jf.nowPlaying);
 
   if (n >= INFO_TIERS.libraries && Array.isArray(jf.libraryTotals)) {
-    html += `<div class="svc-libs">${jf.libraryTotals
+    html += `<section class="svc-widget-section"><div class="svc-widget-section-title">Libraries</div><div class="svc-libs">${jf.libraryTotals
       .map(
         (l) =>
           `<div class="svc-lib"><span class="svc-lib-name">${escapeHtml(l.name || "")}</span><span class="svc-lib-count">${l.count != null ? l.count : "—"}</span></div>`
       )
-      .join("")}</div>`;
+      .join("")}</div></section>`;
   }
   html += metaLine;
   return html;
@@ -1473,9 +1501,9 @@ function renderNginxInfo(d, n) {
     const actionText = nx.lastAction || "—";
     cells.push({ label: "Last", value: actionText });
   }
-  let html = `<div class="svc-info-grid">`;
+  let html = `<section class="svc-widget-section"><div class="svc-widget-section-title">Proxy activity</div><div class="svc-info-grid">`;
   cells.forEach((c) => (html += svcCell(c.label, c.value)));
-  html += `</div>`;
+  html += `</div></section>`;
   return html;
 }
 
@@ -1503,7 +1531,7 @@ function renderTileInfo(tile, svc, span) {
   let html = pingEl ? pingEl.outerHTML : "";
   html += `<div class="service-uptime">${upLine}</div>`;
 
-  if (n >= INFO_TIERS.counts && svc.type === "jellyfin" && svc.details && svc.apiKey) {
+  if (n >= INFO_TIERS.counts && svc.type === "jellyfin" && svc.details) {
     html += `<div class="service-info">${renderJellyfinInfo(d, n)}</div>`;
   }
   if (n >= INFO_TIERS.counts && svc.type === "nginx-proxy-manager" && svc.npmEmail && svc.npmPassword) {

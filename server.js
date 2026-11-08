@@ -281,7 +281,29 @@ async function fetchJellyfinInfo(baseUrl, apiKey, span) {
   }
   if (apiKey && sessions.status === "fulfilled" && sessions.value && sessions.value.ok) {
     const s = await sessions.value.json();
-    out.activeSessions = Array.isArray(s) ? s.filter((x) => x && x.NowPlayingItem).length : null;
+    const playing = Array.isArray(s) ? s.filter((x) => x && x.NowPlayingItem) : [];
+    out.activeSessions = Array.isArray(s) ? playing.length : null;
+    out.nowPlaying = playing.slice(0, 3).map((x) => {
+      const item = x.NowPlayingItem || {};
+      const ticks = Number(item.RunTimeTicks);
+      const position = Number(x.PlayState?.PositionTicks);
+      const progressPct = Number.isFinite(ticks) && ticks > 0 && Number.isFinite(position)
+        ? Math.min(100, Math.max(0, Math.round((position / ticks) * 100)))
+        : null;
+      return {
+        title: item.Name || null,
+        seriesName: item.SeriesName || null,
+        user: x.UserName || null,
+        type: item.Type || null,
+        progressPct,
+        paused: !!x.PlayState?.IsPaused
+      };
+    });
+  }
+  if (apiKey && [counts, sessions, folders, users].some((r) => r.status === "fulfilled" && r.value?.status === 401)) {
+    out.authError = "invalid-api-key";
+  } else if (!apiKey) {
+    out.authError = "missing-api-key";
   }
   if (apiKey && users.status === "fulfilled" && users.value && users.value.ok) {
     const u = await users.value.json();

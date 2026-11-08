@@ -30,6 +30,7 @@ serviceInfoCache.set(jf.id, {
       serverName: "Media-Server", version: "10.9.11", os: "Linux", arch: "x86_64",
       movies: 412, series: 67, episodes: 3400, activeSessions: 2, libraries: 3, users: 2,
       artists: 55, albums: 120, songs: 3500, genres: 42, collections: 9,
+      nowPlaying: [{ title: "The Expanse", user: "Networkbohara", type: "Episode", progressPct: 42 }],
       recentPlays: { days: 14, labels: ["Aug 5", "Aug 11"], values: [3, 7], max: 7 },
       libraryTotals: [
         { name: "Movies", type: "movies", count: 412 },
@@ -53,6 +54,9 @@ assert(moreLg.innerHTML.includes("67"), "jellyfin series cell");
 assert(moreLg.innerHTML.includes("3400"), "jellyfin episodes cell");
 assert(moreLg.innerHTML.includes("Streaming"), "jellyfin streaming label");
 assert(moreLg.innerHTML.includes("Users"), "jellyfin users label");
+assert(moreLg.innerHTML.includes("The Expanse"), "jellyfin now-playing title");
+assert(moreLg.innerHTML.includes("Networkbohara"), "jellyfin now-playing user");
+assert(moreLg.innerHTML.includes("svc-now-playing"), "jellyfin now-playing section");
 assert(!moreLg.innerHTML.includes("Libraries"), "jellyfin libraries label not in level-3 core fields");
 assert(moreLg.innerHTML.includes("10.9.11"), "jellyfin version in meta");
 
@@ -160,15 +164,16 @@ assert(tileDown.querySelector(".service-more").innerHTML.includes("down"), "down
 
 const jfPublic = { id: "jp", name: "Jellyfin", url: "http://x", icon: null, category: "Media", size: "sm", docker: "", type: "jellyfin", details: true, apiKey: "" };
 serviceInfoCache.set(jfPublic.id, {
-  data: { source: "ping", up: true, uptimeSec: 10, jellyfin: { serverName: "Media-Server", version: "10.9.11", os: "Linux" } },
+  data: { source: "ping", up: true, uptimeSec: 10, jellyfin: { serverName: "Media-Server", version: "10.9.11", os: "Linux", authError: "missing-api-key" } },
   at: Date.now()
 });
 const tileJp = makeServiceTile(jfPublic);
 applySpan(tileJp, jfPublic, 3);
 const jpMore = tileJp.querySelector(".service-more").innerHTML;
-assert(!jpMore.includes("service-info"), "jellyfin no-key hides expanded info entirely");
-assert(!jpMore.includes("Media-Server"), "jellyfin no-key hides server meta");
+assert(jpMore.includes("service-info"), "jellyfin no-key keeps widget error state");
+assert(jpMore.includes("Media-Server"), "jellyfin no-key keeps public server meta");
 assert(!jpMore.includes("Movies"), "jellyfin no-key hides counts");
+assert(jpMore.includes("Add a Jellyfin API key"), "jellyfin no-key explains missing widget data");
 
 serviceInfoCache.set("p1", { data: { source: "ping", up: true, uptimeSec: 42 * 60, checkedAt: Date.parse("2026-08-11T10:30:00Z") }, at: Date.now() });
 const tileP = makeServiceTile(CONFIG.services[1]);
