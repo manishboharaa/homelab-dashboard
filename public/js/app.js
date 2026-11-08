@@ -1172,7 +1172,7 @@ function makeServiceTile(svc) {
 
   attachResize(tile, svc);
   renderTileInfo(tile, svc);
-  checkStatus(tile.querySelector(".status-dot"), svc.url, document.getElementById(`ping-${svc.id}`));
+  checkStatus(tile.querySelector(".status-dot"), svc.url, document.getElementById(`ping-${svc.id}`), false, svc.id);
   if (!serviceInfoCache.has(svc.id)) {
     fetchServiceInfo(svc, sizeSpan(svc.size)).then(() => renderTileInfo(tile, svc, sizeSpan(svc.size)));
   }
@@ -1811,12 +1811,19 @@ function applyStatus(dotEl, url, pingEl, res) {
     el.classList.toggle("online", online);
   });
   if (pingEl) {
-    pingEl.textContent = res.error === "no-url" ? "no url" : online ? `${res.ms} ms` : "offline";
+    pingEl.textContent = res.error === "no-url" ? "no url" : online ? (res.ms != null ? `${res.ms} ms` : "online") : "offline";
   }
 }
 
-function checkStatus(dotEl, url, pingEl, force) {
-  const key = String(url || "").trim().toLowerCase();
+function isProxmoxService(svc) {
+  const name = String(svc?.name || "").trim().toLowerCase();
+  return name === "proxmox" || /:\d*8006(?:\/|$)/i.test(String(svc?.url || ""));
+}
+
+function checkStatus(dotEl, url, pingEl, force, serviceId) {
+  const svc = serviceId ? CONFIG.services.find((item) => item.id === serviceId) : null;
+  const proxy = isProxmoxService(svc);
+  const key = proxy ? `backend:${serviceId}` : String(url || "").trim().toLowerCase();
   if (!url) {
     applyStatus(dotEl, url, pingEl, { ok: false, ms: null, error: "no-url" });
     return;
@@ -1826,15 +1833,20 @@ function checkStatus(dotEl, url, pingEl, force) {
     applyStatus(dotEl, url, pingEl, cached);
     if (!force && Date.now() - cached.at < 20000) return;
   }
-  const target = /^https?:\/\//i.test(url) ? url : `http://${url}`;
+  const target = proxy
+    ? `/api/services/${encodeURIComponent(serviceId)}/info?statusOnly=1`
+    : (/^https?:\/\//i.test(url) ? url : `http://${url}`);
   const controller = new AbortController();
   const requestId = (statusRequestSeq.get(dotEl) || 0) + 1;
   statusRequestSeq.set(dotEl, requestId);
   const timeout = setTimeout(() => controller.abort(), 3000);
   const start = performance.now();
-  return fetch(target, { mode: "no-cors", signal: controller.signal })
-    .then(() => {
-      const res = { ok: true, ms: Math.round(performance.now() - start), at: Date.now() };
+  return fetch(target, proxy ? { signal: controller.signal } : { mode: "no-cors", signal: controller.signal })
+    .then((response) => proxy ? response.json() : null)
+    .then((data) => {
+      const res = proxy
+        ? { ok: !!data.up, ms: data.ms ?? null, at: Date.now() }
+        : { ok: true, ms: Math.round(performance.now() - start), at: Date.now() };
       if (statusRequestSeq.get(dotEl) !== requestId) return;
       statusCache.set(key, res);
       applyStatus(dotEl, url, pingEl, res);
@@ -1850,9 +1862,10 @@ function checkStatus(dotEl, url, pingEl, force) {
 
 function refreshAllStatuses() {
   document.querySelectorAll(".service-tile").forEach((tile) => {
+    const svc = CONFIG.services.find((item) => item.id === tile.dataset.id);
     const dot = tile.querySelector(".status-dot");
     const ping = tile.querySelector(".service-ping");
-    checkStatus(dot, dot?.dataset.url, ping, true);
+    checkStatus(dot, dot?.dataset.url, ping, true, svc?.id);
   });
 }
 

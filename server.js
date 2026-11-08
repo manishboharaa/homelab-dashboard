@@ -597,6 +597,7 @@ app.get("/api/services/:id/info", async (req, res) => {
   const svc = cfg.services.find((s) => s.id === req.params.id);
   if (!svc) return res.status(404).json({ error: "service not found" });
   try {
+    const statusOnly = req.query.statusOnly === "1";
     const result = { id: svc.id, source: "ping", up: false, uptimeSec: 0, state: null, checkedAt: Date.now() };
 
     if (svc.docker) {
@@ -618,7 +619,9 @@ app.get("/api/services/:id/info", async (req, res) => {
         const interval = isLocalUrl(svc.url) ? LOCAL_PROBE_MS : REMOTE_PROBE_MS;
         if (Date.now() - entry.lastProbeAt >= interval) {
           entry.lastProbeAt = Date.now();
+          const probeStarted = Date.now();
           const ok = await probeUrl(svc.url);
+          result.ms = Date.now() - probeStarted;
           if (ok) {
             if (!entry.firstSeenAt) entry.firstSeenAt = Date.now();
           } else {
@@ -630,6 +633,8 @@ app.get("/api/services/:id/info", async (req, res) => {
         result.uptimeSec = result.up ? Math.max(0, Math.floor((Date.now() - entry.firstSeenAt) / 1000)) : 0;
       }
     }
+
+    if (statusOnly) return res.json(result);
 
     if (svc.type === "jellyfin" && svc.details && svc.url) {
       const span = parseInt(req.query.span, 10) || 1;
