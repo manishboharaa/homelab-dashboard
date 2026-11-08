@@ -1132,6 +1132,8 @@ function makeServiceTile(svc) {
 const serviceInfoCache = new Map();
 
 async function fetchServiceInfo(svc, span, rows) {
+  const requestId = (infoRequestSeq.get(svc.id) || 0) + 1;
+  infoRequestSeq.set(svc.id, requestId);
   try {
     const s = span || sizeSpan(svc.size);
     const r = rows != null ? rows : rowCount(svc.rows);
@@ -1140,6 +1142,7 @@ async function fetchServiceInfo(svc, span, rows) {
     const res = await fetch(`/api/services/${svc.id}/info${q}`);
     if (!res.ok) return null;
     const data = await res.json();
+    if (infoRequestSeq.get(svc.id) !== requestId) return null;
     serviceInfoCache.set(svc.id, { data, at: Date.now(), level });
     return data;
   } catch {
@@ -1611,6 +1614,8 @@ function letterAvatar(name) {
 window.letterAvatar = letterAvatar;
 
 const statusCache = new Map();
+const statusRequestSeq = new WeakMap();
+const infoRequestSeq = new Map();
 
 function applyStatus(dotEl, url, pingEl, res) {
   const online = !!res.ok;
@@ -1637,16 +1642,20 @@ function checkStatus(dotEl, url, pingEl, force) {
   }
   const target = /^https?:\/\//i.test(url) ? url : `http://${url}`;
   const controller = new AbortController();
+  const requestId = (statusRequestSeq.get(dotEl) || 0) + 1;
+  statusRequestSeq.set(dotEl, requestId);
   const timeout = setTimeout(() => controller.abort(), 3000);
   const start = performance.now();
   return fetch(target, { mode: "no-cors", signal: controller.signal })
     .then(() => {
       const res = { ok: true, ms: Math.round(performance.now() - start), at: Date.now() };
+      if (statusRequestSeq.get(dotEl) !== requestId) return;
       statusCache.set(key, res);
       applyStatus(dotEl, url, pingEl, res);
     })
     .catch(() => {
       const res = { ok: false, ms: null, at: Date.now() };
+      if (statusRequestSeq.get(dotEl) !== requestId) return;
       statusCache.set(key, res);
       applyStatus(dotEl, url, pingEl, res);
     })
