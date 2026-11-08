@@ -2609,6 +2609,50 @@ function openAddService() {
   if (nameInput) nameInput.focus();
 }
 
+let pendingBackupFile = null;
+
+function exportSettingsBackup() {
+  const link = document.createElement("a");
+  link.href = "/api/settings/backup";
+  link.download = "homelab-dashboard-settings.json";
+  link.click();
+  document.getElementById("settingsBackupStatus").textContent = "Backup download started. Credentials were excluded.";
+}
+
+async function restoreSettingsBackup() {
+  if (!pendingBackupFile) return;
+  try {
+    const backup = JSON.parse(await pendingBackupFile.text());
+    const res = await fetch("/api/settings/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(backup)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      document.getElementById("settingsBackupStatus").textContent = data.message || "Backup restore failed.";
+      return;
+    }
+    CONFIG = data;
+    closeSettings();
+    renderGreeting();
+    renderServices();
+    refreshStats();
+    refreshWeather();
+    refreshRss();
+    refreshPihole();
+    refreshAdguard();
+    refreshProxmox();
+    refreshPorts();
+    showToast("Settings restored");
+    pendingBackupFile = null;
+    document.getElementById("settingsImportBackup").value = "";
+    document.getElementById("settingsRestoreBackup").disabled = true;
+  } catch {
+    document.getElementById("settingsBackupStatus").textContent = "Choose a valid dashboard backup JSON file.";
+  }
+}
+
 function initSettingsModal() {
   document.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -2737,6 +2781,13 @@ function initSettingsModal() {
   });
 
   document.getElementById("settingsSave").addEventListener("click", () => saveTab(activeSettingsTab));
+  document.getElementById("settingsExportBackup")?.addEventListener("click", exportSettingsBackup);
+  document.getElementById("settingsImportBackup")?.addEventListener("change", (event) => {
+    pendingBackupFile = event.target.files?.[0] || null;
+    document.getElementById("settingsRestoreBackup").disabled = !pendingBackupFile;
+    document.getElementById("settingsBackupStatus").textContent = pendingBackupFile ? `${pendingBackupFile.name} ready to restore.` : "";
+  });
+  document.getElementById("settingsRestoreBackup")?.addEventListener("click", restoreSettingsBackup);
 
   setupWeatherSearch("settingsWeatherSearch", "settingsWeatherResults", (chosen) => {
     const weather = {

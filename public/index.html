@@ -416,6 +416,17 @@
       <div class="tab-pane" data-pane="system">
         <p class="wizard-sub">Pick up to 6 stats to show on the first row of the system panel. Click "Show all" on the dashboard to see the rest.</p>
         <div id="settingsStatsList" class="stats-pick-list"></div>
+        <div class="settings-backup">
+          <h3>Backup &amp; restore</h3>
+          <p class="wizard-sub">Export dashboard settings without credentials. Restore merges the backup and keeps existing credentials on this dashboard.</p>
+          <div class="settings-backup-actions">
+            <button class="btn btn-secondary btn-sm" id="settingsExportBackup" type="button">Export settings</button>
+            <label class="btn btn-secondary btn-sm" for="settingsImportBackup">Choose backup</label>
+            <input id="settingsImportBackup" type="file" accept="application/json,.json" class="hidden" />
+            <button class="btn btn-primary btn-sm" id="settingsRestoreBackup" type="button" disabled>Restore backup</button>
+          </div>
+          <div id="settingsBackupStatus" class="settings-backup-status" role="status"></div>
+        </div>
       </div>
     </div>
   </div>

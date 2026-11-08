@@ -923,6 +923,14 @@ input { font-family: inherit; }
 .port-status { color: var(--accent); text-transform: capitalize; }
 .port-image { color: var(--text-muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ports-empty { padding: 30px 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.settings-backup {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+}
+.settings-backup h3 { margin: 0 0 8px; color: var(--text-muted); font-size: 13px; }
+.settings-backup-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.settings-backup-status { min-height: 18px; margin-top: 8px; color: var(--text-dim); font: 10px var(--font-mono); }
 
 
 .service-ping {

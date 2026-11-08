@@ -227,6 +227,75 @@ app.put("/api/services/:id", (req, res) => {
   res.json(cfg.services[idx]);
 });
 
+function safeSettingsBackup(cfg) {
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    profile: cfg.profile || {},
+    weather: cfg.weather || {},
+    rss: cfg.rss || {},
+    system: cfg.system || {},
+    pihole: { enabled: !!cfg.pihole?.enabled, url: cfg.pihole?.url || "" },
+    adguard: { enabled: !!cfg.adguard?.enabled, url: cfg.adguard?.url || "", authMode: cfg.adguard?.authMode || "basic" },
+    proxmox: { enabled: !!cfg.proxmox?.enabled, url: cfg.proxmox?.url || "" },
+    services: (Array.isArray(cfg.services) ? cfg.services : []).map((svc) => {
+      const safe = { ...svc };
+      delete safe.apiKey;
+      delete safe.npmEmail;
+      delete safe.npmPassword;
+      if (safe.widgetConfig) {
+        safe.widgetConfig = { ...safe.widgetConfig };
+        ["authValue", "username", "password", "token"].forEach((key) => delete safe.widgetConfig[key]);
+      }
+      return safe;
+    })
+  };
+}
+
+function mergeRestoredService(existing, incoming) {
+  const oldConfig = existing?.widgetConfig || {};
+  const nextConfig = incoming?.widgetConfig || {};
+  return cleanService({
+    ...(existing || {}),
+    ...incoming,
+    apiKey: incoming?.apiKey || existing?.apiKey || "",
+    npmEmail: incoming?.npmEmail || existing?.npmEmail || "",
+    npmPassword: incoming?.npmPassword || existing?.npmPassword || "",
+    widgetConfig: { ...oldConfig, ...nextConfig,
+      authValue: nextConfig.authValue || oldConfig.authValue || "",
+      username: nextConfig.username || oldConfig.username || "",
+      password: nextConfig.password || oldConfig.password || "",
+      token: nextConfig.token || oldConfig.token || ""
+    }
+  });
+}
+
+app.get("/api/settings/backup", (req, res) => {
+  res.json(safeSettingsBackup(readConfig()));
+});
+
+app.post("/api/settings/restore", (req, res) => {
+  const backup = req.body;
+  if (!backup || typeof backup !== "object" || backup.version !== 1 || !Array.isArray(backup.services)) {
+    return res.status(422).json({ error: "validation", message: "Invalid dashboard backup file." });
+  }
+  if (backup.services.some((svc) => !svc || typeof svc !== "object" || !String(svc.name || "").trim() || !String(svc.url || "").trim())) {
+    return res.status(422).json({ error: "validation", message: "Backup contains a service without a name or URL." });
+  }
+  const cfg = readConfig();
+  const byId = new Map(cfg.services.map((svc) => [svc.id, svc]));
+  cfg.profile = { ...cfg.profile, ...(backup.profile || {}) };
+  cfg.weather = { ...cfg.weather, ...(backup.weather || {}) };
+  cfg.rss = { ...cfg.rss, ...(backup.rss || {}) };
+  cfg.system = { ...cfg.system, ...(backup.system || {}) };
+  cfg.pihole = { ...cfg.pihole, ...(backup.pihole || {}) };
+  cfg.adguard = { ...cfg.adguard, ...(backup.adguard || {}) };
+  cfg.proxmox = { ...cfg.proxmox, ...(backup.proxmox || {}) };
+  cfg.services = backup.services.map((svc) => mergeRestoredService(byId.get(svc.id), svc));
+  writeConfig(cfg);
+  res.json(cfg);
+});
+
 app.delete("/api/services/:id", (req, res) => {
   const cfg = readConfig();
   cfg.services = cfg.services.filter((s) => s.id !== req.params.id);
@@ -1566,4 +1635,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, parseDockerPort, serviceCredentialError };
+module.exports = { app, parseDockerPort, serviceCredentialError, safeSettingsBackup };

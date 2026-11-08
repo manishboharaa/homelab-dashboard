@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { parseDockerPort, serviceCredentialError } = require("../server");
+const { parseDockerPort, serviceCredentialError, safeSettingsBackup } = require("../server");
 
 function testDockerPortParsing() {
   assert.deepStrictEqual(
@@ -37,4 +37,16 @@ assert.strictEqual(
   null,
   "accepts a Portainer token"
 );
-console.log("7 server unit tests passed");
+const backup = safeSettingsBackup({
+  profile: { name: "Test" },
+  services: [{ id: "s1", name: "Plex", url: "http://plex", apiKey: "secret", widgetConfig: { username: "user", password: "pass", token: "token", authValue: "header-secret" } }],
+  pihole: { enabled: true, url: "http://pi", apiKey: "secret" },
+  adguard: { enabled: true, url: "http://ag", username: "admin", password: "secret" },
+  proxmox: { enabled: true, url: "https://pve", tokenSecret: "secret" }
+});
+assert.strictEqual(backup.services[0].apiKey, undefined, "backup excludes service API keys");
+assert.strictEqual(backup.services[0].widgetConfig.password, undefined, "backup excludes widget passwords");
+assert.strictEqual(backup.pihole.apiKey, undefined, "backup excludes Pi-hole key");
+assert.strictEqual(backup.adguard.password, undefined, "backup excludes AdGuard password");
+assert.strictEqual(backup.proxmox.tokenSecret, undefined, "backup excludes Proxmox secret");
+console.log("12 server unit tests passed");
