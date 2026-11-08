@@ -920,6 +920,8 @@ input { font-family: inherit; }
 .port-proto { color: var(--text-muted); text-transform: uppercase; font-size: 11px; }
 .port-process { color: var(--text); }
 .port-pid { color: var(--text-dim); }
+.port-status { color: var(--accent); text-transform: capitalize; }
+.port-image { color: var(--text-muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ports-empty { padding: 30px 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
 
 

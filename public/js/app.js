@@ -1738,8 +1738,6 @@ function selectPortsTab(tab) {
     button.classList.toggle("active", active);
     button.setAttribute("aria-selected", String(active));
   });
-  document.getElementById("portsOwnerHead").textContent = activePortsTab === "docker" ? "Service" : "Process";
-  document.getElementById("portsIdHead").textContent = activePortsTab === "docker" ? "Container" : "PID";
   renderPorts();
 }
 
@@ -1756,20 +1754,28 @@ function renderPorts() {
     return;
   }
   empty.classList.add("hidden");
+  document.getElementById("portsTableHead").innerHTML = activePortsTab === "docker"
+    ? "<th>Port mapping</th><th>Protocol</th><th>Service</th><th>Container</th><th>Status</th><th>Image</th>"
+    : "<th>Port</th><th>Protocol</th><th>Process</th><th>PID</th>";
   body.innerHTML = ports
       .map(
         (p) => {
           const isDocker = activePortsTab === "docker";
-          const portText = isDocker && p.containerPort && p.containerPort !== p.port
-            ? `${p.port} → ${p.containerPort}` : p.port;
+          const portText = isDocker
+            ? p.port == null ? (p.containerPort == null ? "—" : `— → ${p.containerPort}`)
+              : p.containerPort && p.containerPort !== p.port ? `${p.port} → ${p.containerPort}` : p.port
+            : p.port;
           const owner = isDocker ? (p.service || "unknown") : (p.process || "unknown");
           const id = isDocker ? (p.containerId || "--") : (p.pid || "--");
+          const dockerCells = isDocker
+            ? `<td class="port-status">${escapeHtml(String(p.state || "unknown"))}</td><td class="port-image">${escapeHtml(String(p.image || "unknown"))}</td>`
+            : "";
           return `
-      <tr data-filter="${escapeHtml(`${p.port} ${p.containerPort || ""} ${owner} ${id} ${p.protocol || ""}`.toLowerCase())}">
+      <tr data-filter="${escapeHtml(`${p.port || ""} ${p.containerPort || ""} ${owner} ${id} ${p.protocol || ""} ${p.state || ""} ${p.image || ""}`.toLowerCase())}">
         <td class="port-num">${escapeHtml(String(portText))}</td>
-        <td class="port-proto">${escapeHtml(p.protocol || "")}</td>
+        <td class="port-proto">${escapeHtml(p.protocol || "—")}</td>
         <td class="port-process">${escapeHtml(String(owner))}</td>
-        <td class="port-pid">${escapeHtml(String(id))}</td>
+        <td class="port-pid">${escapeHtml(String(id))}</td>${dockerCells}
       </tr>`;
         }
       )

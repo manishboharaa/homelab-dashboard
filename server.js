@@ -824,7 +824,9 @@ app.get("/api/ports", async (req, res) => {
       dockerAvailable = true;
       const dockerSeen = new Set();
       (Array.isArray(containers) ? containers : []).forEach((container) => {
-        (Array.isArray(container.ports) ? container.ports : []).forEach((entry) => {
+        const entries = Array.isArray(container.ports) ? container.ports : [];
+        let addedPort = false;
+        entries.forEach((entry) => {
           const parsed = parseDockerPort(entry);
           if (!parsed) return;
           const key = `${container.id || container.name}:${parsed.hostPort}:${parsed.containerPort}:${parsed.protocol}`;
@@ -835,8 +837,20 @@ app.get("/api/ports", async (req, res) => {
             containerPort: parsed.containerPort,
             protocol: parsed.protocol,
             service: container.name || container.id?.slice(0, 12) || "unknown",
-            containerId: container.id ? container.id.slice(0, 12) : null
+            containerId: container.id ? container.id.slice(0, 12) : null,
+            state: container.state || "unknown",
+            image: container.image || "unknown"
           });
+          addedPort = true;
+        });
+        if (!addedPort) docker.push({
+          port: null,
+          containerPort: null,
+          protocol: null,
+          service: container.name || container.id?.slice(0, 12) || "unknown",
+          containerId: container.id ? container.id.slice(0, 12) : null,
+          state: container.state || "unknown",
+          image: container.image || "unknown"
         });
       });
       docker.sort((a, b) => a.port - b.port || String(a.service).localeCompare(String(b.service)));
