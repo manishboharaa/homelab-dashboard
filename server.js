@@ -243,7 +243,7 @@ const jellyfinAgent = new https.Agent({ rejectUnauthorized: false });
 function jellyfinRequest(baseUrl, apiKey, agent) {
   const o = { timeout: PROBE_TIMEOUT };
   if (/^https:/i.test(baseUrl)) o.agent = agent;
-  if (apiKey) o.headers = { "X-Emby-Token": apiKey };
+  if (apiKey) o.headers = { Authorization: `MediaBrowser Token=${apiKey}` };
   return o;
 }
 
