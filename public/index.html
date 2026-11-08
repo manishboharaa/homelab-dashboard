@@ -282,6 +282,16 @@
           <input id="settingsNewCatCustom" type="text" placeholder="New category name" class="wizard-input small hidden" autocomplete="off" />
           <button class="btn btn-secondary" id="settingsAddService">Add service</button>
         </div>
+        <div class="ss-widget-picker">
+          <label class="field-label" for="settingsNewWidget">Service widget</label>
+          <select id="settingsNewWidget" class="wizard-input small">
+            <option value="generic">Generic service</option>
+            <option value="jellyfin">Jellyfin</option>
+            <option value="nginx-proxy-manager">Nginx Proxy Manager</option>
+            <option value="immich">Immich</option>
+          </select>
+          <div id="settingsNewWidgetFields" class="ss-widget-fields"></div>
+        </div>
         <div id="settingsJellyfinAdd" class="ss-jf-block hidden">
           <label class="ss-check-label">
             <input id="settingsNewDetails" type="checkbox" />
@@ -296,6 +306,16 @@
           <input id="settingsNewNpmEmail" type="email" placeholder="NPM login email" class="wizard-input small" autocomplete="off" />
           <input id="settingsNewNpmPassword" type="password" placeholder="NPM password" class="wizard-input small" autocomplete="off" />
           <p class="ss-jf-hint">Nginx Proxy Manager &rarr; Settings &rarr; Users &rarr; your login email &amp; password</p>
+        </div>
+        <div id="settingsImmichAdd" class="ss-jf-block hidden">
+          <label class="ss-check-label">
+            <input id="settingsNewImmichDetails" type="checkbox" />
+            Show statistics (users, photos, videos, storage)
+          </label>
+          <div id="settingsImmichApiRow" class="ss-jf-api hidden">
+            <input id="settingsNewImmichApiKey" type="password" placeholder="Immich API key" class="wizard-input small" autocomplete="off" />
+            <p class="ss-jf-hint">Immich &rarr; Account Settings &rarr; API Keys (requires server.statistics)</p>
+          </div>
         </div>
       </div>
 

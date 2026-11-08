@@ -319,6 +319,18 @@ jfName.value = "plex";
 updateJellyfinAddMenu();
 assert(jfBlock.classList.contains("hidden"), "add menu hidden for non-jellyfin");
 
+const widgetSelect = document.getElementById("settingsNewWidget");
+const immichBlock = document.getElementById("settingsImmichAdd");
+if (widgetSelect && immichBlock) {
+  jfName.value = "Immich";
+  widgetSelect.value = "immich";
+  updateWidgetAddMenu();
+  assert(!immichBlock.classList.contains("hidden"), "immich widget options visible");
+  widgetSelect.value = "generic";
+  updateWidgetAddMenu();
+  assert(immichBlock.classList.contains("hidden"), "generic widget hides immich options");
+}
+
 const rowJf = makeServiceRow({ id: "r1", name: "Jellyfin", url: "http://x", icon: "https://icons.example/jellyfin.png", category: "Media", size: "sm", docker: "jellyfin", type: "jellyfin", details: true, apiKey: "k" });
 const extraJf = rowJf.children.find((c) => c.className === "ss-row-extra");
 assert(!!extraJf, "jellyfin row has extra row");
@@ -329,6 +341,14 @@ assert(!extraJf.children.some((c) => c.className.includes("ss-type-input")), "je
 
 const rowJfByName = makeServiceRow({ id: "r3", name: "jellyfin", url: "http://x", icon: null, category: "Media", size: "sm", docker: "", type: null, details: false, apiKey: "" });
 assert(!!rowJfByName.children.find((c) => c.className === "ss-row-extra"), "row named jellyfin (case-insensitive) gets extras");
+
+const rowImmich = makeServiceRow({ id: "r4", name: "Immich", url: "http://x", icon: null, category: "Media", size: "sm", docker: "", type: null, details: true, apiKey: "k" });
+const extraImmich = rowImmich.children.find((c) => c.className === "ss-row-extra");
+assert(!!extraImmich && extraImmich.children.some((c) => c.className.includes("ss-api-input")), "immich row has API key input");
+const immichHtml = renderImmichInfo({ immich: { users: 4, photos: 1200, videos: 88, storageBytes: 1024 * 1024 * 500 } });
+assert(immichHtml.includes(">1200<") && immichHtml.includes("500 MB"), "immich widget renders photo and storage metrics");
+const filteredImmichHtml = renderImmichInfo({ immich: { users: 4, photos: 1200, videos: 88, storageBytes: 1024 * 1024 * 500 } }, ["photos"]);
+assert(filteredImmichHtml.includes("Photos") && !filteredImmichHtml.includes("Users"), "immich widget respects selected metric fields");
 
 const jfCollected = rowJf.collect();
 assert(jfCollected.id === "r1" && jfCollected.type === "jellyfin" && jfCollected.docker === "jellyfin", "jellyfin row collect() carries id + type + docker");

@@ -40,3 +40,10 @@ const SERVICE_CATALOG = [
   { name: "Paperless-ngx", slug: "paperless-ngx", category: "Productivity", defaultPort: 8000 },
   { name: "Heimdall", slug: "heimdall", category: "Other", defaultPort: 80 }
 ];
+
+const SERVICE_WIDGETS = [
+  { type: "", label: "Generic service", fields: [] },
+  { type: "jellyfin", label: "Jellyfin", fields: ["movies", "series", "episodes", "users", "streaming", "nowPlaying", "libraries"] },
+  { type: "nginx-proxy-manager", label: "Nginx Proxy Manager", fields: ["hosts", "streams", "certificates", "deadHosts", "lastAction"] },
+  { type: "immich", label: "Immich", fields: ["users", "photos", "videos", "storage"] }
+];

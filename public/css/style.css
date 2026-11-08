@@ -1014,6 +1014,13 @@ input { font-family: inherit; }
 }
 .ss-jf-api { display: flex; flex-direction: column; gap: 4px; }
 .ss-jf-hint { font-size: 11px; color: var(--text-muted); margin: 0; }
+.ss-widget-picker { margin-top: 10px; }
+.ss-widget-fields { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 6px; }
+.ss-widget-fields .field-label { width: 100%; margin: 0; }
+.ss-widget-field { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+.ss-widget-field input { accent-color: var(--accent); }
+.ss-widget-row-fields { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.ss-widget-fields-label { width: 100%; font-size: 11px; color: var(--text-muted); }
 
 .ss-add-row { display: flex; align-items: center; gap: 8px; position: relative; }
 .ss-name-wrap { position: relative; flex: 1; }

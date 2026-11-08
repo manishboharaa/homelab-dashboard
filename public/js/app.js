@@ -1193,6 +1193,7 @@ const INFO_TIERS = { meta: 2, counts: 3, extended: 4, libraries: 5 };
 function maxLevelFor(svc) {
   if (svc && svc.type === "jellyfin" && svc.details) return INFO_TIERS.libraries;
   if (svc && svc.type === "nginx-proxy-manager" && svc.npmEmail) return INFO_TIERS.extended;
+  if (svc && svc.type === "immich" && svc.details) return INFO_TIERS.counts;
   if (svc && svc.type) return INFO_TIERS.counts;
   return INFO_TIERS.meta;
 }
@@ -1427,7 +1428,11 @@ function renderNowPlaying(items) {
   return `<section class="svc-widget-section svc-now-playing"><div class="svc-widget-section-title">Now playing</div>${content}</section>`;
 }
 
-function renderJellyfinInfo(d, span) {
+function widgetFieldEnabled(fields, key) {
+  return !Array.isArray(fields) || !fields.length || fields.includes(key);
+}
+
+function renderJellyfinInfo(d, span, fields) {
   if (!d) return `<div class="svc-info-hint">checking…</div>`;
   const jf = d.jellyfin || {};
   const n = span || 3;
@@ -1448,21 +1453,22 @@ function renderJellyfinInfo(d, span) {
   }
 
   const cells = [
-    { label: "Movies", value: jf.movies },
-    { label: "Series", value: jf.series },
-    { label: "Episodes", value: jf.episodes },
-    { label: "Streaming", value: jf.activeSessions },
-    { label: "Users", value: jf.users }
+    { key: "movies", label: "Movies", value: jf.movies },
+    { key: "series", label: "Series", value: jf.series },
+    { key: "episodes", label: "Episodes", value: jf.episodes },
+    { key: "streaming", label: "Streaming", value: jf.activeSessions },
+    { key: "users", label: "Users", value: jf.users }
   ];
-  const haveCounts = cells.some((c) => c.value != null);
+  const visibleCells = cells.filter((c) => widgetFieldEnabled(fields, c.key));
+  const haveCounts = visibleCells.some((c) => c.value != null);
   if (!haveCounts && !jf.serverName && !jf.version) {
     return `<div class="svc-info-hint">details unavailable</div>`;
   }
 
   let html = `<section class="svc-widget-section"><div class="svc-widget-section-title">Library</div><div class="svc-info-grid">`;
   if (haveCounts) {
-    cells.forEach((c) => (html += svcCell(c.label, c.value)));
-    if (n >= INFO_TIERS.extended && jf.songs > 0) {
+    visibleCells.forEach((c) => (html += svcCell(c.label, c.value)));
+    if (n >= INFO_TIERS.extended && jf.songs > 0 && widgetFieldEnabled(fields, "songs")) {
       html += svcCell("Songs", jf.songs);
     }
   } else {
@@ -1470,9 +1476,9 @@ function renderJellyfinInfo(d, span) {
   }
   html += `</div></section>`;
 
-  html += renderNowPlaying(jf.nowPlaying);
+  if (widgetFieldEnabled(fields, "nowPlaying")) html += renderNowPlaying(jf.nowPlaying);
 
-  if (n >= INFO_TIERS.libraries && Array.isArray(jf.libraryTotals)) {
+  if (n >= INFO_TIERS.libraries && Array.isArray(jf.libraryTotals) && widgetFieldEnabled(fields, "libraries")) {
     html += `<section class="svc-widget-section"><div class="svc-widget-section-title">Libraries</div><div class="svc-libs">${jf.libraryTotals
       .map(
         (l) =>
@@ -1484,7 +1490,7 @@ function renderJellyfinInfo(d, span) {
   return html;
 }
 
-function renderNginxInfo(d, n) {
+function renderNginxInfo(d, n, fields) {
   if (!d) return `<div class="svc-info-hint">checking…</div>`;
   const nx = d.nginx || {};
   const bits = [];
@@ -1492,19 +1498,34 @@ function renderNginxInfo(d, n) {
   const metaLine = bits.length ? `<div class="svc-meta">${escapeHtml(bits.join(" · "))}</div>` : "";
   if (n < INFO_TIERS.counts) return metaLine || `<div class="svc-info-hint">details unavailable</div>`;
   const cells = [
-    { label: "Hosts", value: nx.proxyHosts },
-    { label: "Streams", value: nx.streams },
-    { label: "Certs", value: nx.certificates }
+    { key: "hosts", label: "Hosts", value: nx.proxyHosts },
+    { key: "streams", label: "Streams", value: nx.streams },
+    { key: "certificates", label: "Certs", value: nx.certificates }
   ];
   if (n >= INFO_TIERS.extended) {
-    cells.push({ label: "Dead", value: nx.deadHosts ?? "—" });
+    cells.push({ key: "deadHosts", label: "Dead", value: nx.deadHosts ?? "—" });
     const actionText = nx.lastAction || "—";
-    cells.push({ label: "Last", value: actionText });
+    cells.push({ key: "lastAction", label: "Last", value: actionText });
   }
+  const visibleCells = cells.filter((c) => widgetFieldEnabled(fields, c.key));
   let html = `<section class="svc-widget-section"><div class="svc-widget-section-title">Proxy activity</div><div class="svc-info-grid">`;
-  cells.forEach((c) => (html += svcCell(c.label, c.value)));
+  visibleCells.forEach((c) => (html += svcCell(c.label, c.value)));
   html += `</div></section>`;
   return html;
+}
+
+function renderImmichInfo(d, fields) {
+  if (!d) return `<div class="svc-info-hint">checking…</div>`;
+  const im = d.immich || {};
+  if (im.authError === "invalid-api-key") return `<div class="svc-widget-error">Immich API key rejected · update it in Settings</div>`;
+  if (im.authError === "missing-api-key") return `<div class="svc-widget-error">Add an Immich API key in Settings to show statistics</div>`;
+  if (im.error) return `<div class="svc-widget-error">${escapeHtml(im.error)}</div>`;
+  return `<section class="svc-widget-section"><div class="svc-widget-section-title">Library statistics</div><div class="svc-info-grid">${[
+    { key: "users", label: "Users", value: im.users },
+    { key: "photos", label: "Photos", value: im.photos },
+    { key: "videos", label: "Videos", value: im.videos },
+    { key: "storage", label: "Storage", value: im.storageBytes != null ? fmtBytes(im.storageBytes) : null }
+  ].filter((c) => widgetFieldEnabled(fields, c.key)).map((c) => svcCell(c.label, c.value)).join("")}</div></section>`;
 }
 
 function renderTileInfo(tile, svc, span) {
@@ -1532,10 +1553,13 @@ function renderTileInfo(tile, svc, span) {
   html += `<div class="service-uptime">${upLine}</div>`;
 
   if (n >= INFO_TIERS.counts && svc.type === "jellyfin" && svc.details) {
-    html += `<div class="service-info">${renderJellyfinInfo(d, n)}</div>`;
+    html += `<div class="service-info">${renderJellyfinInfo(d, n, svc.widgetFields)}</div>`;
   }
   if (n >= INFO_TIERS.counts && svc.type === "nginx-proxy-manager" && svc.npmEmail && svc.npmPassword) {
-    html += `<div class="service-info">${renderNginxInfo(d, n)}</div>`;
+    html += `<div class="service-info">${renderNginxInfo(d, n, svc.widgetFields)}</div>`;
+  }
+  if (n >= INFO_TIERS.counts && svc.type === "immich" && svc.details) {
+    html += `<div class="service-info">${renderImmichInfo(d, svc.widgetFields)}</div>`;
   }
   more.innerHTML = html;
 }
@@ -1816,6 +1840,7 @@ function makeServiceRow(svc, opts) {
   let dockerInput = null;
   let detailsInput = null;
   let apiKeyInput = null;
+  let widgetFieldInputs = [];
   if (isJelly) {
     const extra = document.createElement("div");
     extra.className = "ss-row-extra";
@@ -1873,6 +1898,39 @@ function makeServiceRow(svc, opts) {
     extra.appendChild(npmPasswordInput);
     row.appendChild(extra);
   }
+  const isImmich = svc.type === "immich" || String(svc.name || "").trim().toLowerCase() === "immich";
+  let immichDetailsInput = null;
+  let immichApiKeyInput = null;
+  if (isImmich) {
+    const extra = document.createElement("div");
+    extra.className = "ss-row-extra";
+    immichDetailsInput = document.createElement("input");
+    immichDetailsInput.type = "checkbox";
+    immichDetailsInput.checked = !!svc.details;
+    immichDetailsInput.disabled = isRemoved;
+    const detailsLabel = document.createElement("label");
+    detailsLabel.className = "ss-check-label";
+    detailsLabel.appendChild(immichDetailsInput);
+    detailsLabel.appendChild(document.createTextNode(" Show Immich statistics"));
+    extra.appendChild(detailsLabel);
+    immichApiKeyInput = document.createElement("input");
+    immichApiKeyInput.className = "ss-input ss-api-input";
+    immichApiKeyInput.type = "password";
+    immichApiKeyInput.value = svc.apiKey || "";
+    immichApiKeyInput.placeholder = "Immich API key";
+    immichApiKeyInput.title = "Immich API key — Account Settings → API Keys";
+    immichApiKeyInput.disabled = isRemoved;
+    extra.appendChild(immichApiKeyInput);
+    row.appendChild(extra);
+  }
+  const widgetType = isJelly ? "jellyfin" : isNginx ? "nginx-proxy-manager" : isImmich ? "immich" : null;
+  if (widgetType) {
+    const widgetFields = makeWidgetFieldsEditor(widgetType, svc.widgetFields, isRemoved);
+    if (widgetFields.element) {
+      widgetFieldInputs = widgetFields.inputs;
+      row.appendChild(widgetFields.element);
+    }
+  }
   row.appendChild(top);
   row.appendChild(bottom);
 
@@ -1893,6 +1951,14 @@ function makeServiceRow(svc, opts) {
       updated.type = "nginx-proxy-manager";
       updated.npmEmail = npmEmailInput.value.trim();
       updated.npmPassword = npmPasswordInput.value.trim();
+    }
+    if (isImmich) {
+      updated.type = "immich";
+      updated.details = immichDetailsInput.checked;
+      updated.apiKey = immichApiKeyInput.value.trim();
+    }
+    if (widgetFieldInputs.length) {
+      updated.widgetFields = widgetFieldInputs.filter((input) => input.checked).map((input) => input.dataset.widgetField);
     }
     return updated;
   };
@@ -1979,22 +2045,101 @@ function renderSettingsIconPreview() {
 }
 
 function updateJellyfinAddMenu() {
-  const block = document.getElementById("settingsJellyfinAdd");
-  if (!block) return;
-  const name = (document.getElementById("settingsNewName")?.value || "").trim().toLowerCase();
-  const isJf = name === "jellyfin";
-  block.classList.toggle("hidden", !isJf);
-  if (!isJf) return;
-  const apiRow = document.getElementById("settingsJellyfinApiRow");
-  const details = document.getElementById("settingsNewDetails");
-  if (apiRow) apiRow.classList.toggle("hidden", !(details && details.checked));
+  updateWidgetAddMenu();
 }
 
 function updateNginxAddMenu() {
-  const block = document.getElementById("settingsNginxAdd");
-  if (!block) return;
+  updateWidgetAddMenu();
+}
+
+function selectedWidgetType() {
+  const selected = document.getElementById("settingsNewWidget")?.value;
+  if (selected === "generic") return "";
+  if (selected) return selected;
   const name = (document.getElementById("settingsNewName")?.value || "").trim().toLowerCase();
-  block.classList.toggle("hidden", !name.includes("nginx"));
+  if (name === "jellyfin") return "jellyfin";
+  if (name.includes("nginx")) return "nginx-proxy-manager";
+  if (name === "immich") return "immich";
+  return "";
+}
+
+function availableServiceWidgets() {
+  if (typeof SERVICE_WIDGETS !== "undefined" && Array.isArray(SERVICE_WIDGETS)) return SERVICE_WIDGETS;
+  return [
+    { type: "", label: "Generic service", fields: [] },
+    { type: "jellyfin", label: "Jellyfin", fields: [] },
+    { type: "nginx-proxy-manager", label: "Nginx Proxy Manager", fields: [] },
+    { type: "immich", label: "Immich", fields: [] }
+  ];
+}
+
+const WIDGET_FIELD_LABELS = {
+  movies: "Movies", series: "Series", episodes: "Episodes", users: "Users", streaming: "Active streams",
+  nowPlaying: "Now playing", libraries: "Libraries", hosts: "Hosts", streams: "Streams", certificates: "Certificates",
+  deadHosts: "Dead hosts", lastAction: "Last action", photos: "Photos", videos: "Videos", storage: "Storage"
+};
+
+function makeWidgetFieldsEditor(widget, selectedFields, disabled) {
+  const spec = availableServiceWidgets().find((w) => w.type === widget);
+  if (!spec?.fields?.length) return { element: null, inputs: [] };
+  const selected = Array.isArray(selectedFields) && selectedFields.length ? new Set(selectedFields) : null;
+  const element = document.createElement("div");
+  element.className = "ss-widget-row-fields";
+  const title = document.createElement("span");
+  title.className = "ss-widget-fields-label";
+  title.textContent = "Expanded metrics:";
+  element.appendChild(title);
+  const inputs = spec.fields.map((field) => {
+    const label = document.createElement("label");
+    label.className = "ss-widget-field";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.dataset.widgetField = field;
+    input.checked = !selected || selected.has(field);
+    input.disabled = !!disabled;
+    label.append(input, document.createTextNode(` ${WIDGET_FIELD_LABELS[field] || field}`));
+    element.appendChild(label);
+    return input;
+  });
+  return { element, inputs };
+}
+
+function populateWidgetSelect() {
+  const select = document.getElementById("settingsNewWidget");
+  if (!select) return;
+  const widgets = availableServiceWidgets();
+  const current = select.value || "generic";
+  select.innerHTML = widgets.map((w) => `<option value="${escapeHtml(w.type || "generic")}">${escapeHtml(w.label)}</option>`).join("");
+  select.value = widgets.some((w) => (w.type || "generic") === current) ? current : "generic";
+}
+
+function populateWidgetFields(widget) {
+  const box = document.getElementById("settingsNewWidgetFields");
+  if (!box) return;
+  const previous = new Map([...box.querySelectorAll("[data-widget-field]")].map((el) => [el.dataset.widgetField, el.checked]));
+  const spec = availableServiceWidgets().find((w) => w.type === widget);
+  if (!spec?.fields?.length) {
+    box.innerHTML = "";
+    return;
+  }
+  box.innerHTML = `<span class="field-label">Show in expanded tile</span>${spec.fields.map((field) =>
+    `<label class="ss-widget-field"><input type="checkbox" data-widget-field="${escapeHtml(field)}" ${previous.has(field) ? (previous.get(field) ? "checked" : "") : "checked"} /> ${escapeHtml(WIDGET_FIELD_LABELS[field] || field)}</label>`
+  ).join("")}`;
+}
+
+function updateWidgetAddMenu() {
+  const widget = selectedWidgetType();
+  populateWidgetFields(widget);
+  const jfBlock = document.getElementById("settingsJellyfinAdd");
+  const nginxBlock = document.getElementById("settingsNginxAdd");
+  const immichBlock = document.getElementById("settingsImmichAdd");
+  jfBlock?.classList.toggle("hidden", widget !== "jellyfin");
+  nginxBlock?.classList.toggle("hidden", widget !== "nginx-proxy-manager");
+  immichBlock?.classList.toggle("hidden", widget !== "immich");
+  const jfDetails = document.getElementById("settingsNewDetails");
+  document.getElementById("settingsJellyfinApiRow")?.classList.toggle("hidden", widget !== "jellyfin" || !jfDetails?.checked);
+  const imDetails = document.getElementById("settingsNewImmichDetails");
+  document.getElementById("settingsImmichApiRow")?.classList.toggle("hidden", widget !== "immich" || !imDetails?.checked);
 }
 
 function setupSettingsServiceSuggest() {
@@ -2003,6 +2148,7 @@ function setupSettingsServiceSuggest() {
   const catInput = document.getElementById("settingsNewCat");
   const catCustom = document.getElementById("settingsNewCatCustom");
   if (!input || !box) return;
+  populateWidgetSelect();
   input.addEventListener("input", () => {
     const hadPick = !!settingsPick;
     settingsPick = null;
@@ -2037,7 +2183,10 @@ function setupSettingsServiceSuggest() {
         if (catInput) catInput.classList.remove("hidden");
         box.classList.add("hidden");
         renderSettingsIconPreview();
-        updateJellyfinAddMenu();
+        const widgetSelect = document.getElementById("settingsNewWidget");
+        const inferred = s.name.toLowerCase() === "jellyfin" ? "jellyfin" : s.name.toLowerCase().includes("nginx") ? "nginx-proxy-manager" : s.name.toLowerCase() === "immich" ? "immich" : "generic";
+        if (widgetSelect) widgetSelect.value = inferred;
+        updateWidgetAddMenu();
         const urlInput = document.getElementById("settingsNewUrl");
         if (urlInput && !urlInput.value.trim()) urlInput.placeholder = `http://host:${s.defaultPort}`;
       });
@@ -2083,6 +2232,8 @@ function initSettingsModal() {
 
   const newDetails = document.getElementById("settingsNewDetails");
   newDetails?.addEventListener("change", updateJellyfinAddMenu);
+  document.getElementById("settingsNewImmichDetails")?.addEventListener("change", updateWidgetAddMenu);
+  document.getElementById("settingsNewWidget")?.addEventListener("change", updateWidgetAddMenu);
 
   document.getElementById("settingsAddService").addEventListener("click", () => {
     const name = document.getElementById("settingsNewName").value.trim();
@@ -2093,16 +2244,22 @@ function initSettingsModal() {
     const usingCustom = catCustom && !catCustom.classList.contains("hidden");
     const icon = settingsPick?.icon || null;
     const category = (usingCustom ? catCustom.value.trim() : catInput?.value.trim()) || "Other";
-    const isJf = name.toLowerCase() === "jellyfin";
-    const isNx = name.toLowerCase().includes("nginx");
+    const widgetType = selectedWidgetType();
+    const isJf = widgetType === "jellyfin";
+    const isNx = widgetType === "nginx-proxy-manager";
+    const isImmich = widgetType === "immich";
     const details = isJf && !!newDetails?.checked;
-    const apiKey = details ? (document.getElementById("settingsNewApiKey")?.value || "").trim() : "";
+    const immichDetails = isImmich && !!document.getElementById("settingsNewImmichDetails")?.checked;
+    const apiKey = details
+      ? (document.getElementById("settingsNewApiKey")?.value || "").trim()
+      : immichDetails ? (document.getElementById("settingsNewImmichApiKey")?.value || "").trim() : "";
     const npmEmail = isNx ? (document.getElementById("settingsNewNpmEmail")?.value || "").trim() : "";
     const npmPassword = isNx ? (document.getElementById("settingsNewNpmPassword")?.value || "").trim() : "";
+    const widgetFields = [...document.querySelectorAll("#settingsNewWidgetFields [data-widget-field]:checked")].map((el) => el.dataset.widgetField);
     stagedServices.added.push({
       id: "new-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       name, url, icon, category,
-      type: isJf ? "jellyfin" : isNx ? "nginx-proxy-manager" : null, details, apiKey,
+       type: widgetType || null, details: details || immichDetails, apiKey, widgetFields,
       npmEmail, npmPassword,
       size: 1, rows: 1
     });
@@ -2112,14 +2269,20 @@ function initSettingsModal() {
     settingsPick = null;
     resetAddCategoryField();
     if (newDetails) newDetails.checked = false;
+    const widgetSelect = document.getElementById("settingsNewWidget");
+    if (widgetSelect) widgetSelect.value = "generic";
     const apiKeyInput = document.getElementById("settingsNewApiKey");
     if (apiKeyInput) apiKeyInput.value = "";
-    updateJellyfinAddMenu();
+    const immichDetailsInput = document.getElementById("settingsNewImmichDetails");
+    if (immichDetailsInput) immichDetailsInput.checked = false;
+    const immichApiInput = document.getElementById("settingsNewImmichApiKey");
+    if (immichApiInput) immichApiInput.value = "";
+    updateWidgetAddMenu();
     const npmEmailInput = document.getElementById("settingsNewNpmEmail");
     if (npmEmailInput) npmEmailInput.value = "";
     const npmPasswordInput = document.getElementById("settingsNewNpmPassword");
     if (npmPasswordInput) npmPasswordInput.value = "";
-    updateNginxAddMenu();
+    updateWidgetAddMenu();
     const suggestBox = document.getElementById("settingsServiceSuggest");
     if (suggestBox) suggestBox.classList.add("hidden");
     renderSettingsIconPreview();

@@ -86,9 +86,10 @@ function cleanService(s) {
     size: normalizeSize(s.size, s.type === "jellyfin" ? 6 : 1),
     rows: normalizeRows(s.rows),
     docker: s.docker || "",
-    type: s.type === "jellyfin" ? "jellyfin" : s.type === "nginx-proxy-manager" ? "nginx-proxy-manager" : null,
+    type: ["jellyfin", "nginx-proxy-manager", "immich"].includes(s.type) ? s.type : null,
     details: !!s.details,
     apiKey: s.apiKey || "",
+    widgetFields: Array.isArray(s.widgetFields) ? s.widgetFields.filter((x) => typeof x === "string") : [],
     npmEmail: s.npmEmail || "",
     npmPassword: s.npmPassword || ""
   };
@@ -153,7 +154,10 @@ app.post("/api/services", (req, res) => {
     docker: req.body.docker,
     type: req.body.type,
     details: req.body.details,
-    apiKey: req.body.apiKey
+    apiKey: req.body.apiKey,
+    widgetFields: req.body.widgetFields,
+    npmEmail: req.body.npmEmail,
+    npmPassword: req.body.npmPassword
   });
   cfg.services.push(svc);
   writeConfig(cfg);
@@ -401,6 +405,25 @@ async function fetchNginxInfo(baseUrl, email, password, span) {
   return out;
 }
 
+async function fetchImmichInfo(baseUrl, apiKey) {
+  const base = normalizeUrl(baseUrl).replace(/\/$/, "");
+  if (!base) return {};
+  if (!apiKey) return { authError: "missing-api-key" };
+  const r = await fetch(`${base}/api/server/statistics`, {
+    headers: { "x-api-key": apiKey },
+    timeout: PROBE_TIMEOUT
+  });
+  if (r.status === 401 || r.status === 403) return { authError: "invalid-api-key" };
+  if (!r.ok) return { error: `Immich returned HTTP ${r.status}` };
+  const d = await r.json();
+  return {
+    users: d.users != null ? d.users : null,
+    photos: d.photos != null ? d.photos : null,
+    videos: d.videos != null ? d.videos : null,
+    storageBytes: d.usage != null ? Number(d.usage) : null
+  };
+}
+
 app.get("/api/services/:id/info", async (req, res) => {
   const cfg = readConfig();
   const svc = cfg.services.find((s) => s.id === req.params.id);
@@ -448,6 +471,9 @@ app.get("/api/services/:id/info", async (req, res) => {
     }
     if (svc.type === "nginx-proxy-manager" && svc.npmEmail && svc.npmPassword && svc.url) {
       result.nginx = await fetchNginxInfo(svc.url, svc.npmEmail, svc.npmPassword);
+    }
+    if (svc.type === "immich" && svc.details && svc.url) {
+      result.immich = await fetchImmichInfo(svc.url, svc.apiKey);
     }
     res.json(result);
   } catch (err) {
