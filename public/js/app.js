@@ -1202,17 +1202,11 @@ function maxLevelFor(svc) {
 }
 
 function maxSpanFor(svc, rows) {
-  if (svc && !svc.type) return 1;
-  const r = rowCount(rows || (svc && svc.rows) || 1);
-  const ml = maxLevelFor(svc);
-  return Math.min(3, Math.max(2, ml - Math.max(0, r - 1)));
+  return MAX_TILE_SPAN;
 }
 
 function maxRowsFor(svc, span) {
-  if (svc && !svc.type) return 1;
-  const s = sizeSpan(span || (svc && svc.size) || 1);
-  const ml = maxLevelFor(svc);
-  return Math.min(4, Math.max(1, ml - s + 1));
+  return MAX_TILE_ROWS;
 }
 
 function levelFor(span, rows) {
