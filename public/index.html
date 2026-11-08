@@ -216,9 +216,13 @@
           <input id="portsSearch" type="text" placeholder="Filter by port or process..." class="search-input ports-search" />
         </div>
         <div class="panel ports-panel">
+          <div class="ports-tabs" role="tablist" aria-label="Open port source">
+            <button class="ports-tab active" type="button" role="tab" aria-selected="true" data-ports-tab="system">System</button>
+            <button class="ports-tab" type="button" role="tab" aria-selected="false" data-ports-tab="docker">Docker</button>
+          </div>
           <table class="ports-table">
             <thead>
-              <tr><th>Port</th><th>Protocol</th><th>Process</th><th>PID</th></tr>
+              <tr><th>Port</th><th>Protocol</th><th id="portsOwnerHead">Process</th><th id="portsIdHead">PID</th></tr>
             </thead>
             <tbody id="portsTableBody"></tbody>
           </table>

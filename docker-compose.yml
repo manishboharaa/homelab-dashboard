@@ -13,4 +13,5 @@ services:
       - /:/hostfs:ro
       - /sys/class/thermal:/sys/class/thermal:ro
       - /proc:/host/proc:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     pid: host

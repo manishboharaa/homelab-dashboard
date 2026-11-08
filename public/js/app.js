@@ -321,10 +321,10 @@ function initDashboard() {
   });
 
   document.getElementById("portsSearch").addEventListener("input", (e) => {
-    const q = e.target.value.toLowerCase();
-    document.querySelectorAll("#portsTableBody tr").forEach((row) => {
-      row.style.display = row.dataset.filter.includes(q) ? "" : "none";
-    });
+    filterPorts(e.target.value);
+  });
+  document.querySelectorAll("[data-ports-tab]").forEach((button) => {
+    button.addEventListener("click", () => selectPortsTab(button.dataset.portsTab));
   });
 
   document.getElementById("settingsBtn").addEventListener("click", openSettings);
@@ -1721,32 +1721,75 @@ async function persistServiceOrder() {
   toastResult(res, "Service order saved");
 }
 
-async function refreshPorts() {
+let portsData = { system: [], docker: [], dockerAvailable: false };
+let activePortsTab = "system";
+
+function filterPorts(query) {
+  const q = String(query || "").trim().toLowerCase();
+  document.querySelectorAll("#portsTableBody tr").forEach((row) => {
+    row.style.display = row.dataset.filter.includes(q) ? "" : "none";
+  });
+}
+
+function selectPortsTab(tab) {
+  activePortsTab = tab === "docker" ? "docker" : "system";
+  document.querySelectorAll("[data-ports-tab]").forEach((button) => {
+    const active = button.dataset.portsTab === activePortsTab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  document.getElementById("portsOwnerHead").textContent = activePortsTab === "docker" ? "Service" : "Process";
+  document.getElementById("portsIdHead").textContent = activePortsTab === "docker" ? "Container" : "PID";
+  renderPorts();
+}
+
+function renderPorts() {
   const body = document.getElementById("portsTableBody");
   const empty = document.getElementById("portsEmpty");
-  try {
-    const r = await fetch("/api/ports");
-    const ports = await r.json();
-    if (!ports.length) {
-      body.innerHTML = "";
-      empty.classList.remove("hidden");
-      return;
-    }
-    empty.classList.add("hidden");
-    body.innerHTML = ports
+  const ports = portsData[activePortsTab] || [];
+  if (!ports.length) {
+    body.innerHTML = "";
+    empty.textContent = activePortsTab === "docker" && !portsData.dockerAvailable
+      ? "Docker ports unavailable — mount /var/run/docker.sock to enable them."
+      : `No ${activePortsTab} listening ports detected.`;
+    empty.classList.remove("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
+  body.innerHTML = ports
       .map(
-        (p) => `
-      <tr data-filter="${p.port} ${escapeHtml((p.process || "").toLowerCase())}">
-        <td class="port-num">${p.port}</td>
+        (p) => {
+          const isDocker = activePortsTab === "docker";
+          const portText = isDocker && p.containerPort && p.containerPort !== p.port
+            ? `${p.port} → ${p.containerPort}` : p.port;
+          const owner = isDocker ? (p.service || "unknown") : (p.process || "unknown");
+          const id = isDocker ? (p.containerId || "--") : (p.pid || "--");
+          return `
+      <tr data-filter="${escapeHtml(`${p.port} ${p.containerPort || ""} ${owner} ${id} ${p.protocol || ""}`.toLowerCase())}">
+        <td class="port-num">${escapeHtml(String(portText))}</td>
         <td class="port-proto">${escapeHtml(p.protocol || "")}</td>
-        <td class="port-process">${escapeHtml(p.process || "unknown")}</td>
-        <td class="port-pid">${p.pid || "--"}</td>
-      </tr>`
+        <td class="port-process">${escapeHtml(String(owner))}</td>
+        <td class="port-pid">${escapeHtml(String(id))}</td>
+      </tr>`;
+        }
       )
       .join("");
+  filterPorts(document.getElementById("portsSearch")?.value || "");
+}
+
+async function refreshPorts() {
+  try {
+    const r = await fetch("/api/ports");
+    const data = await r.json();
+    portsData = Array.isArray(data) ? { system: data, docker: [], dockerAvailable: false } : {
+      system: Array.isArray(data.system) ? data.system : [],
+      docker: Array.isArray(data.docker) ? data.docker : [],
+      dockerAvailable: !!data.dockerAvailable
+    };
+    renderPorts();
   } catch {
-    body.innerHTML = "";
-    empty.classList.remove("hidden");
+    portsData = { system: [], docker: [], dockerAvailable: false };
+    renderPorts();
   }
 }
 

@@ -776,6 +776,23 @@ app.get("/api/system", async (req, res) => {
 
 
 
+function parseDockerPort(entry) {
+  if (typeof entry === "string") {
+    const match = entry.match(/(?:^|,\s*)(?:[^:]+:)?(\d+)->(\d+)\/(tcp|udp)/i);
+    if (!match) return null;
+    return { hostPort: Number(match[1]), containerPort: Number(match[2]), protocol: match[3].toLowerCase() };
+  }
+  if (!entry || typeof entry !== "object") return null;
+  const hostPort = Number(entry.publicPort ?? entry.hostPort ?? entry.host ?? 0) || null;
+  const containerPort = Number(entry.privatePort ?? entry.containerPort ?? entry.port ?? 0) || hostPort;
+  if (!containerPort) return null;
+  return {
+    hostPort,
+    containerPort,
+    protocol: String(entry.type || entry.protocol || "tcp").toLowerCase()
+  };
+}
+
 app.get("/api/ports", async (req, res) => {
   try {
     const connections = await si.networkConnections();
@@ -794,8 +811,34 @@ app.get("/api/ports", async (req, res) => {
       }
     });
 
-    const ports = Array.from(seen.values()).sort((a, b) => a.port - b.port);
-    res.json(ports);
+    const system = Array.from(seen.values()).sort((a, b) => a.port - b.port);
+    let docker = [];
+    let dockerAvailable = false;
+    try {
+      const containers = await getDockerContainers();
+      dockerAvailable = true;
+      const dockerSeen = new Set();
+      (Array.isArray(containers) ? containers : []).forEach((container) => {
+        (Array.isArray(container.ports) ? container.ports : []).forEach((entry) => {
+          const parsed = parseDockerPort(entry);
+          if (!parsed) return;
+          const key = `${container.id || container.name}:${parsed.hostPort}:${parsed.containerPort}:${parsed.protocol}`;
+          if (dockerSeen.has(key)) return;
+          dockerSeen.add(key);
+          docker.push({
+            port: parsed.hostPort || parsed.containerPort,
+            containerPort: parsed.containerPort,
+            protocol: parsed.protocol,
+            service: container.name || container.id?.slice(0, 12) || "unknown",
+            containerId: container.id ? container.id.slice(0, 12) : null
+          });
+        });
+      });
+      docker.sort((a, b) => a.port - b.port || String(a.service).localeCompare(String(b.service)));
+    } catch {
+      dockerAvailable = false;
+    }
+    res.json({ system, docker, dockerAvailable });
   } catch (err) {
     res.status(500).json({ error: "failed to read listening ports", detail: String(err) });
   }

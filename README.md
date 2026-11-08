@@ -205,7 +205,7 @@ main view, and everything from the wizard is editable from Settings.
 | Service integrations | Built-in metrics for Jellyfin, Emby, Plex, Immich, Nginx Proxy Manager, Nextcloud, Sonarr, Radarr, Lidarr, Prowlarr, qBittorrent, Overseerr, and Portainer |
 | Custom API service | User-defined metrics read from a JSON endpoint |
 | Services grid | Your added services — click a tile to open it in a new tab; **drag** a tile to reorder the grid or move it to another category. **+ Add service** opens Settings → Services |
-| Open Ports | Every listening port on the host with process name and PID |
+| Open Ports | **System** tab shows host listening ports with process name and PID; **Docker** tab shows published container ports with service/container names |
 | Sidebar → Search | Instantly filters the services grid as you type |
 | Sidebar → Weather | Current temp, condition, today's high/low, feels-like, humidity, wind + 7-day forecast |
 | Sidebar → Tech News | Latest items from your configured RSS feeds |
@@ -230,6 +230,7 @@ here's what each piece maps to under the hood:
 | Stats shown in the first row | Settings → System Info | Pick up to 6 of the 10 stats for the collapsed first row; the rest appear behind "Show all" |
 | Timezone | `docker-compose.yml` → `TZ` | Set before first build, see below |
 | Primary disk path | `docker-compose.yml` → `HOST_DISK_PATH` | Defaults to `/hostfs`, see below |
+| Docker ports | `docker-compose.yml` Docker socket mount | The dashboard reads Docker metadata read-only to show published ports and container names |
 
 ### Changing the timezone
 
