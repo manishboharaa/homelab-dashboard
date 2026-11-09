@@ -23,6 +23,7 @@ function testDockerPortParsing() {
 testDockerPortParsing();
 
 assert.strictEqual(probeResponseIsAvailable(302), true, "treats a safe HTTP redirect as reachable");
+assert.strictEqual(probeResponseIsAvailable(307), true, "treats a temporary HTTP redirect as reachable");
 assert.strictEqual(probeResponseIsAvailable(500), false, "treats server errors as unavailable");
 
 assert.deepStrictEqual(

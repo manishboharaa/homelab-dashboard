@@ -24,6 +24,7 @@ const DEFAULT_CONFIG_PATH = path.join(__dirname, "config", "config.default.json"
 const UPTIME_PATH = path.join(DATA_DIR, "service-uptime.json");
 const LOCAL_PROBE_MS = 5 * 60 * 1000;
 const REMOTE_PROBE_MS = 30 * 60 * 1000;
+const UNAVAILABLE_PROBE_MS = 5 * 60 * 1000;
 const PROBE_TIMEOUT = 6000;
 
 const rssParser = new Parser({ timeout: 8000 });
@@ -922,7 +923,9 @@ app.get("/api/services/:id/info", async (req, res) => {
     if (result.source !== "docker") {
       if (svc.url) {
         const entry = serviceUptime[svc.url] || (serviceUptime[svc.url] = { firstSeenAt: null, lastProbeAt: 0 });
-        const interval = isLocalUrl(svc.url) ? LOCAL_PROBE_MS : REMOTE_PROBE_MS;
+        const interval = isLocalUrl(svc.url)
+          ? LOCAL_PROBE_MS
+          : entry.firstSeenAt ? REMOTE_PROBE_MS : UNAVAILABLE_PROBE_MS;
         if (Date.now() - entry.lastProbeAt >= interval) {
           entry.lastProbeAt = Date.now();
           const probeStarted = Date.now();
