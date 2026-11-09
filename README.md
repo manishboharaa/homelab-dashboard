@@ -589,8 +589,9 @@ self-signed certificate, configure `TLS_CA_FILE` or explicitly set
 failure just hides the panel — it won't affect the rest of the dashboard.
 
 **Dashboard login is not visible**
-Open ⚙️ **Settings** and scroll the tab row horizontally to the right; choose
-**Security**. Enable login protection, enter a username and a password of at
+Open ⚙️ **Settings** and choose the visible **Security** tab. On smaller
+screens, the Settings tabs wrap onto additional rows so every tab remains
+accessible without a horizontal scrollbar. Enable login protection, enter a username and a password of at
 least 8 characters, then click **Save**. The same option appears in setup
 wizard step 6. Use HTTPS through a reverse proxy when login protection is
 enabled.

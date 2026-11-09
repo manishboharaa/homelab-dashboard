@@ -78,7 +78,7 @@ async function assertSafeOutboundUrl(value) {
 
 async function fetch(url, options = {}) {
   await assertSafeOutboundUrl(url);
-  return rawFetch(url, { ...options, redirect: "error" });
+  return rawFetch(url, { ...options, redirect: options.redirect || "error" });
 }
 
 function authState(cfg) {
@@ -515,14 +515,18 @@ function isLocalUrl(url) {
 
 const probeAgent = new https.Agent({ rejectUnauthorized: false });
 
+function probeResponseIsAvailable(status) {
+  return status >= 200 && status < 500;
+}
+
 async function probeUrl(url) {
   const target = normalizeUrl(url);
   if (!target) return false;
   const options = { timeout: PROBE_TIMEOUT };
   if (/^https:/i.test(target)) options.agent = probeAgent;
   try {
-    const r = await fetch(target, options);
-    return r.ok || r.status < 500;
+    const r = await fetch(target, { ...options, redirect: "manual" });
+    return probeResponseIsAvailable(r.status);
   } catch {
     return false;
   }
@@ -1836,4 +1840,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, mapNextcloudInfo, parseDockerPort, serviceCredentialError, safeSettingsBackup };
+module.exports = { app, mapNextcloudInfo, parseDockerPort, probeResponseIsAvailable, serviceCredentialError, safeSettingsBackup };

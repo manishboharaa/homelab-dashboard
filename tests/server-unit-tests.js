@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { mapNextcloudInfo, parseDockerPort, serviceCredentialError, safeSettingsBackup } = require("../server");
+const { mapNextcloudInfo, parseDockerPort, probeResponseIsAvailable, serviceCredentialError, safeSettingsBackup } = require("../server");
 
 function testDockerPortParsing() {
   assert.deepStrictEqual(
@@ -21,6 +21,9 @@ function testDockerPortParsing() {
 }
 
 testDockerPortParsing();
+
+assert.strictEqual(probeResponseIsAvailable(302), true, "treats a safe HTTP redirect as reachable");
+assert.strictEqual(probeResponseIsAvailable(500), false, "treats server errors as unavailable");
 
 assert.deepStrictEqual(
   mapNextcloudInfo({

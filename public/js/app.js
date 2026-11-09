@@ -2127,8 +2127,11 @@ function makeServiceRow(svc, opts) {
     apiKeyInput = document.createElement("input");
     apiKeyInput.className = "ss-input ss-api-input";
     apiKeyInput.value = svc.apiKey || "";
-     apiKeyInput.placeholder = svc.type === "emby" ? "Emby API key" : "Jellyfin API key";
-     apiKeyInput.title = `${svc.type === "emby" ? "Emby" : "Jellyfin"} API key`;
+    const jellyLabel = svc.type === "emby" ? "Emby" : "Jellyfin";
+    apiKeyInput.placeholder = svc.credentialState?.apiKey
+      ? "API key already saved — enter a new key to replace it"
+      : `${jellyLabel} API key`;
+    apiKeyInput.title = `${jellyLabel} API key: ${svc.type === "emby" ? "Dashboard → API Keys → Add API Key" : "Dashboard → API Keys → Add API Key"}. A saved key is hidden; enter a new one only to replace it.`;
     apiKeyInput.disabled = isRemoved;
     extra.appendChild(apiKeyInput);
 
@@ -2189,8 +2192,10 @@ function makeServiceRow(svc, opts) {
     immichApiKeyInput.className = "ss-input ss-api-input";
     immichApiKeyInput.type = "password";
     immichApiKeyInput.value = svc.apiKey || "";
-    immichApiKeyInput.placeholder = "Immich API key";
-    immichApiKeyInput.title = "Immich API key — Account Settings → API Keys";
+    immichApiKeyInput.placeholder = svc.credentialState?.apiKey
+      ? "API key already saved — enter a new key to replace it"
+      : "Immich API key";
+    immichApiKeyInput.title = "Immich API key: Account Settings → API Keys. A saved key is hidden; enter a new one only to replace it.";
     immichApiKeyInput.disabled = isRemoved;
     extra.appendChild(immichApiKeyInput);
     row.appendChild(extra);
@@ -2262,7 +2267,10 @@ function makeServiceRow(svc, opts) {
     arrApiKeyInput.className = "ss-input ss-api-input";
     arrApiKeyInput.type = "password";
     arrApiKeyInput.value = svc.apiKey || "";
-    arrApiKeyInput.placeholder = "API key";
+    arrApiKeyInput.placeholder = svc.credentialState?.apiKey
+      ? "API key already saved — enter a new key to replace it"
+      : "API key";
+    arrApiKeyInput.title = "API key: Settings → General → Security → API key. A saved key is hidden; enter a new one only to replace it.";
     arrApiKeyInput.disabled = isRemoved;
     extra.appendChild(arrApiKeyInput);
     row.appendChild(extra);
@@ -2296,7 +2304,10 @@ function makeServiceRow(svc, opts) {
     mediaApiKeyInput.className = "ss-input ss-api-input";
     mediaApiKeyInput.type = "password";
     mediaApiKeyInput.value = svc.apiKey || "";
-    mediaApiKeyInput.placeholder = "API key or token";
+    mediaApiKeyInput.placeholder = svc.credentialState?.apiKey
+      ? "API key/token already saved — enter a new one to replace it"
+      : "API key or token";
+    mediaApiKeyInput.title = "API key or token: create/copy it from this service's Settings or Account/API Keys page. A saved value is hidden; enter a new one only to replace it.";
     mediaApiKeyInput.disabled = isRemoved;
     extra.appendChild(mediaApiKeyInput);
     row.appendChild(extra);

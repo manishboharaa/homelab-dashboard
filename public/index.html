@@ -328,7 +328,7 @@
             Show extra details (movies, series, active streams, libraries, users)
           </label>
           <div id="settingsJellyfinApiRow" class="ss-jf-api hidden">
-            <input id="settingsNewApiKey" type="password" placeholder="Jellyfin API key" class="wizard-input small" autocomplete="off" />
+            <input id="settingsNewApiKey" type="password" placeholder="Jellyfin API key" title="Jellyfin → Dashboard → API Keys → Add API Key" class="wizard-input small" autocomplete="off" />
             <p class="ss-jf-hint">Get one in Jellyfin &rarr; Dashboard &rarr; API Keys &rarr; Add API Key</p>
           </div>
         </div>
@@ -343,7 +343,7 @@
             Show statistics (users, photos, videos, storage)
           </label>
           <div id="settingsImmichApiRow" class="ss-jf-api hidden">
-            <input id="settingsNewImmichApiKey" type="password" placeholder="Immich API key" class="wizard-input small" autocomplete="off" />
+            <input id="settingsNewImmichApiKey" type="password" placeholder="Immich API key" title="Immich → Account Settings → API Keys" class="wizard-input small" autocomplete="off" />
             <p class="ss-jf-hint">Immich &rarr; Account Settings &rarr; API Keys (requires server.statistics)</p>
           </div>
         </div>
@@ -366,7 +366,7 @@
           <p class="ss-jf-hint">Available metrics: free space, active users, files, and shares. Use an NC-Token or username/password.</p>
         </div>
         <div id="settingsArrAdd" class="ss-jf-block hidden">
-          <input id="settingsNewArrApiKey" type="password" placeholder="API key" class="wizard-input small" autocomplete="off" />
+          <input id="settingsNewArrApiKey" type="password" placeholder="API key" title="Settings → General → Security → API key" class="wizard-input small" autocomplete="off" />
           <p class="ss-jf-hint">Find the API key in Settings &rarr; General. Available metrics include wanted, queued, and library count.</p>
         </div>
         <div id="settingsQbittorrentAdd" class="ss-jf-block hidden">
@@ -377,7 +377,7 @@
           <p class="ss-jf-hint">Available metrics include download/upload speed and seeding/leeching counts.</p>
         </div>
         <div id="settingsMediaApiAdd" class="ss-jf-block hidden">
-          <input id="settingsNewMediaApiKey" type="password" placeholder="API key or token" class="wizard-input small" autocomplete="off" />
+          <input id="settingsNewMediaApiKey" type="password" placeholder="API key or token" title="Create or copy the API key/token from this service's Settings or Account/API Keys page" class="wizard-input small" autocomplete="off" />
           <p class="ss-jf-hint">Use the API key or token from this service's settings. Available metrics appear below.</p>
         </div>
       </div>
@@ -408,7 +408,7 @@
           <span>I run Pi-hole</span>
         </label>
         <input id="settingsPiholeUrl" type="text" placeholder="http://192.168.1.10" class="wizard-input small" />
-        <input id="settingsPiholeKey" type="text" placeholder="API key" class="wizard-input small" />
+        <input id="settingsPiholeKey" type="text" placeholder="API key" title="Pi-hole admin → Settings → API → Web API password/API key" class="wizard-input small" />
       </div>
 
       <div class="tab-pane" data-pane="adguard">
