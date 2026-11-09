@@ -384,8 +384,10 @@ Refreshes every 60 seconds.
    your Proxmox server URL — no trailing slash, e.g.
    `https://192.168.1.20:8006` — the token ID and the token secret, then
    finish. (You can also connect later via ⚙️ Settings → Proxmox.)
-3. Self-signed HTTPS certificates are accepted, so a default Proxmox
-   install works without extra setup.
+3. HTTPS certificate verification is enabled. For a self-signed Proxmox
+   certificate, mount the Proxmox CA certificate into the dashboard container
+   and set `TLS_CA_FILE` in `docker-compose.yml`; for a trusted private
+   network only, `ALLOW_INSECURE_TLS=true` is an explicit fallback.
 
 The panel hides itself if it can't connect, so a wrong URL or token never
 breaks the rest of the dashboard.
@@ -581,9 +583,17 @@ from the server itself, not your browsing device, will show as offline.
 **Proxmox panel is hidden**
 Check that the URL is reachable from the dashboard container (no trailing
 slash) and that you're using a token ID in the form `user@pam!tokenid`
-plus its secret. The panel uses the read-only **Audit** role and accepts
-self-signed certificates. Any connection failure just hides the panel — it
-won't affect the rest of the dashboard.
+plus its secret. The panel uses the read-only **Audit** role. For a
+self-signed certificate, configure `TLS_CA_FILE` or explicitly set
+`ALLOW_INSECURE_TLS=true` for a trusted private network. Any connection
+failure just hides the panel — it won't affect the rest of the dashboard.
+
+**Dashboard login is not visible**
+Open ⚙️ **Settings** and scroll the tab row horizontally to the right; choose
+**Security**. Enable login protection, enter a username and a password of at
+least 8 characters, then click **Save**. The same option appears in setup
+wizard step 6. Use HTTPS through a reverse proxy when login protection is
+enabled.
 
 **Proxmox panel shows zeros / no guests**
 On PVE 8.1+, a token only has the permissions explicitly granted to it (it
