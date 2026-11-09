@@ -1729,7 +1729,7 @@ function renderTileInfo(tile, svc, span) {
   if ((svc.type === "lidarr" || svc.type === "prowlarr") && svc.details) {
     html += `<div class="service-info">${renderArrInfo(d, svc.widgetFields)}</div>`;
   }
-  if (svc.type === "qbittorrent" && svc.details) {
+  if (n >= INFO_TIERS.counts && svc.type === "qbittorrent" && svc.details) {
     html += `<div class="service-info">${renderQbittorrentInfo(d, svc.widgetFields)}</div>`;
   }
   if (svc.type === "plex" && svc.details) {
