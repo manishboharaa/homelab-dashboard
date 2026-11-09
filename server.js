@@ -2,11 +2,14 @@ const express = require("express");
 const crypto = require("crypto");
 const fs = require("fs");
 const https = require("https");
+const dns = require("dns").promises;
+const net = require("net");
+const tls = require("tls");
 const os = require("os");
 const path = require("path");
 const si = require("systeminformation");
 const Parser = require("rss-parser");
-const fetch = require("node-fetch");
+const rawFetch = require("node-fetch");
 const checkDiskSpace = require("check-disk-space").default;
 const unixpass = require("unixpass");
 const helmet = require("helmet");
@@ -35,8 +38,148 @@ app.use(helmet({
     },
   },
 }));
-app.use(express.json());
+app.use(express.json({ limit: "100kb" }));
 app.use(express.static(path.join(__dirname, "public")));
+
+const authSessions = new Map();
+const loginAttempts = new Map();
+const outboundDnsCache = new Map();
+
+function blockedHost(hostname) {
+  const host = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
+  if (!host || host === "localhost" || host.endsWith(".localhost") || host === "metadata.google.internal") return true;
+  if (net.isIP(host) === 4) {
+    const octets = host.split(".").map(Number);
+    return octets[0] === 0 || octets[0] === 127 || (octets[0] === 169 && octets[1] === 254);
+  }
+  if (net.isIP(host) === 6) return host === "::" || host === "::1" || host.startsWith("fe8") || host.startsWith("fe9") || host.startsWith("fea") || host.startsWith("feb");
+  return false;
+}
+
+async function assertSafeOutboundUrl(value) {
+  const parsed = new URL(String(value));
+  if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password || blockedHost(parsed.hostname)) {
+    throw new Error("outbound URL is not allowed");
+  }
+  const key = parsed.hostname.toLowerCase();
+  const cached = outboundDnsCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    if (cached.blocked) throw new Error("outbound URL resolves to a restricted address");
+    return;
+  }
+  let addresses = [];
+  try {
+    addresses = (await dns.lookup(key, { all: true })).map((entry) => entry.address);
+  } catch {}
+  const restricted = addresses.some((address) => blockedHost(address));
+  outboundDnsCache.set(key, { blocked: restricted, expiresAt: Date.now() + 60 * 1000 });
+  if (restricted) throw new Error("outbound URL resolves to a restricted address");
+}
+
+async function fetch(url, options = {}) {
+  await assertSafeOutboundUrl(url);
+  return rawFetch(url, { ...options, redirect: "error" });
+}
+
+function authState(cfg) {
+  const auth = cfg?.auth || {};
+  return {
+    enabled: auth.enabled === true && !!auth.username && !!auth.passwordHash,
+    username: String(auth.username || ""),
+    passwordHash: String(auth.passwordHash || "")
+  };
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16)) {
+  const derived = crypto.scryptSync(String(password), salt, 64);
+  return `scrypt$${salt.toString("base64url")}$${derived.toString("base64url")}`;
+}
+
+function verifyPassword(password, encoded) {
+  try {
+    const [, saltText, hashText] = String(encoded || "").split("$");
+    const salt = Buffer.from(saltText, "base64url");
+    const expected = Buffer.from(hashText, "base64url");
+    const actual = crypto.scryptSync(String(password), salt, expected.length);
+    return expected.length > 0 && crypto.timingSafeEqual(actual, expected);
+  } catch {
+    return false;
+  }
+}
+
+function cookieValue(req, name) {
+  const cookies = String(req.headers.cookie || "").split(";");
+  const entry = cookies.find((part) => part.trim().startsWith(`${name}=`));
+  return entry ? decodeURIComponent(entry.trim().slice(name.length + 1)) : "";
+}
+
+function issueAuthSession(res) {
+  const token = crypto.randomBytes(32).toString("base64url");
+  authSessions.set(token, Date.now() + 12 * 60 * 60 * 1000);
+  res.setHeader("Set-Cookie", `hdash_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`);
+}
+
+function publicService(svc) {
+  const safe = { ...svc, credentialState: {
+    apiKey: !!svc.apiKey,
+    npm: !!(svc.npmEmail && svc.npmPassword),
+    widget: {
+      authValue: !!svc.widgetConfig?.authValue,
+      username: !!svc.widgetConfig?.username,
+      password: !!svc.widgetConfig?.password,
+      token: !!svc.widgetConfig?.token
+    }
+  }};
+  delete safe.apiKey;
+  delete safe.npmEmail;
+  delete safe.npmPassword;
+  safe.widgetConfig = { ...safe.widgetConfig };
+  ["authValue", "username", "password", "token"].forEach((key) => delete safe.widgetConfig[key]);
+  return safe;
+}
+
+function publicConfig(cfg) {
+  const auth = authState(cfg);
+  return {
+    ...cfg,
+    auth: { enabled: auth.enabled, username: auth.username },
+    pihole: { enabled: !!cfg.pihole?.enabled, url: cfg.pihole?.url || "", credentialConfigured: !!cfg.pihole?.apiKey },
+    adguard: { enabled: !!cfg.adguard?.enabled, url: cfg.adguard?.url || "", authMode: cfg.adguard?.authMode || "basic", credentialConfigured: !!(cfg.adguard?.username && cfg.adguard?.password) },
+    proxmox: { enabled: !!cfg.proxmox?.enabled, url: cfg.proxmox?.url || "", credentialConfigured: !!(cfg.proxmox?.tokenId && cfg.proxmox?.tokenSecret) },
+    services: (cfg.services || []).map(publicService)
+  };
+}
+
+app.post("/api/login", (req, res) => {
+  const state = authState(readConfig());
+  if (!state.enabled) return res.json({ ok: true });
+  const ip = req.socket.remoteAddress || "unknown";
+  const attempt = loginAttempts.get(ip) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
+  if (attempt.resetAt <= Date.now()) { attempt.count = 0; attempt.resetAt = Date.now() + 15 * 60 * 1000; }
+  if (attempt.count >= 10) return res.status(429).json({ error: "too many login attempts" });
+  attempt.count++;
+  loginAttempts.set(ip, attempt);
+  if (req.body?.username !== state.username || !verifyPassword(req.body?.password, state.passwordHash)) {
+    return res.status(401).json({ error: "invalid credentials" });
+  }
+  loginAttempts.delete(ip);
+  issueAuthSession(res);
+  res.json({ ok: true });
+});
+
+app.use("/api", (req, res, next) => {
+  if (req.path === "/login") return next();
+  const state = authState(readConfig());
+  if (!state.enabled) return next();
+  const token = cookieValue(req, "hdash_session");
+  const expiresAt = authSessions.get(token);
+  if (!expiresAt || expiresAt <= Date.now()) {
+    authSessions.delete(token);
+    return res.status(401).json({ error: "authentication required" });
+  }
+  authSessions.set(token, Date.now() + 12 * 60 * 60 * 1000);
+  next();
+});
 
 function ensureConfig() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -54,6 +197,31 @@ function readConfig() {
 function writeConfig(cfg) {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
   return cfg;
+}
+
+function authFromInput(input, existing = {}) {
+  const requested = input || {};
+  if (requested.enabled !== true) return { enabled: false, username: "", passwordHash: "" };
+  const username = String(requested.username || existing.username || "").trim().slice(0, 100);
+  const password = String(requested.password || "");
+  if (!username) throw Object.assign(new Error("Dashboard authentication requires a username."), { status: 422 });
+  if (!password && existing.passwordHash) return { enabled: true, username, passwordHash: existing.passwordHash };
+  if (password.length < 8) throw Object.assign(new Error("Dashboard password must be at least 8 characters."), { status: 422 });
+  return { enabled: true, username, passwordHash: hashPassword(password) };
+}
+
+function mergeService(existing, incoming) {
+  const oldWidget = existing?.widgetConfig || {};
+  const newWidget = incoming?.widgetConfig || {};
+  const merged = { ...(existing || {}), ...(incoming || {}) };
+  for (const key of ["apiKey", "npmEmail", "npmPassword"]) {
+    if (!String(incoming?.[key] || "").trim() && existing?.[key]) merged[key] = existing[key];
+  }
+  merged.widgetConfig = { ...oldWidget, ...newWidget };
+  for (const key of ["authValue", "username", "password", "token"]) {
+    if (!String(newWidget[key] || "").trim() && oldWidget[key]) merged.widgetConfig[key] = oldWidget[key];
+  }
+  return cleanService(merged);
 }
 
 function normalizeUrl(url) {
@@ -98,20 +266,20 @@ function cleanWidgetConfig(value) {
 function cleanService(s) {
   return {
     id: s.id || crypto.randomUUID(),
-    name: s.name,
-    url: s.url,
-    icon: s.icon || null,
-    category: s.category || "Other",
+    name: String(s.name || "").trim().slice(0, 120),
+    url: String(s.url || "").trim().slice(0, 500),
+    icon: String(s.icon || "").trim().slice(0, 500) || null,
+    category: String(s.category || "Other").trim().slice(0, 80) || "Other",
     size: normalizeSize(s.size, s.type === "jellyfin" ? 6 : 1),
     rows: normalizeRows(s.rows),
-    docker: s.docker || "",
+    docker: String(s.docker || "").trim().slice(0, 200),
     type: ["jellyfin", "emby", "plex", "nginx-proxy-manager", "immich", "custom-api", "nextcloud", "sonarr", "radarr", "lidarr", "prowlarr", "qbittorrent", "overseerr", "portainer"].includes(s.type) ? s.type : null,
     details: !!s.details,
-    apiKey: s.apiKey || "",
+    apiKey: String(s.apiKey || "").slice(0, 500),
     widgetFields: Array.isArray(s.widgetFields) ? s.widgetFields.filter((x) => typeof x === "string") : [],
     widgetConfig: cleanWidgetConfig(s.widgetConfig),
-    npmEmail: s.npmEmail || "",
-    npmPassword: s.npmPassword || ""
+    npmEmail: String(s.npmEmail || "").trim().slice(0, 200),
+    npmPassword: String(s.npmPassword || "").slice(0, 500)
   };
 }
 
@@ -143,7 +311,7 @@ function serviceCredentialError(svc) {
 
 
 app.get("/api/config", (req, res) => {
-  res.json(readConfig());
+  res.json(publicConfig(readConfig()));
 });
 
 app.post("/api/setup", (req, res) => {
@@ -153,17 +321,21 @@ app.post("/api/setup", (req, res) => {
   if (profile) cfg.profile = { ...cfg.profile, ...profile };
   if (Array.isArray(services)) {
     cfg.services = services.map(cleanService);
+    const invalid = cfg.services.map(serviceCredentialError).find(Boolean);
+    if (invalid) return res.status(422).json({ error: "validation", message: invalid });
   }
   if (weather) cfg.weather = { ...cfg.weather, ...weather };
   if (rss && Array.isArray(rss.feeds)) cfg.rss.feeds = rss.feeds;
-  if (pihole) cfg.pihole = { ...cfg.pihole, ...pihole, url: normalizeUrl(pihole.url) };
-  if (adguard) cfg.adguard = { ...cfg.adguard, ...adguard, url: normalizeUrl(adguard.url) };
+  if (pihole) cfg.pihole = { ...cfg.pihole, ...pihole, apiKey: pihole.apiKey || cfg.pihole?.apiKey || "", url: normalizeUrl(pihole.url) };
+  if (adguard) cfg.adguard = { ...cfg.adguard, ...adguard, username: adguard.username || cfg.adguard?.username || "", password: adguard.password || cfg.adguard?.password || "", url: normalizeUrl(adguard.url) };
   if (system) cfg.system = { ...cfg.system, ...system };
-  if (proxmox) cfg.proxmox = { ...cfg.proxmox, ...proxmox, url: normalizeUrl(proxmox.url) };
+  if (proxmox) cfg.proxmox = { ...cfg.proxmox, ...proxmox, tokenId: proxmox.tokenId || cfg.proxmox?.tokenId || "", tokenSecret: proxmox.tokenSecret || cfg.proxmox?.tokenSecret || "", url: normalizeUrl(proxmox.url) };
+  if (req.body?.auth) cfg.auth = authFromInput(req.body.auth, cfg.auth);
 
   cfg.setupComplete = true;
   writeConfig(cfg);
-  res.json(cfg);
+  if (authState(cfg).enabled) issueAuthSession(res);
+  res.json(publicConfig(cfg));
 });
 
 app.put("/api/settings", (req, res) => {
@@ -172,21 +344,23 @@ app.put("/api/settings", (req, res) => {
   if (profile) cfg.profile = { ...cfg.profile, ...profile };
   if (weather) cfg.weather = { ...cfg.weather, ...weather };
   if (rss && Array.isArray(rss.feeds)) cfg.rss.feeds = rss.feeds;
-  if (pihole) cfg.pihole = { ...cfg.pihole, ...pihole, url: normalizeUrl(pihole.url) };
-  if (adguard) cfg.adguard = { ...cfg.adguard, ...adguard, url: normalizeUrl(adguard.url) };
+  if (pihole) cfg.pihole = { ...cfg.pihole, ...pihole, apiKey: pihole.apiKey || cfg.pihole?.apiKey || "", url: normalizeUrl(pihole.url) };
+  if (adguard) cfg.adguard = { ...cfg.adguard, ...adguard, username: adguard.username || cfg.adguard?.username || "", password: adguard.password || cfg.adguard?.password || "", url: normalizeUrl(adguard.url) };
   if (system) cfg.system = { ...cfg.system, ...system };
   if (Array.isArray(services)) {
     const byId = new Map(cfg.services.map((s) => [s.id, s]));
     const nextServices = services.map((s) =>
-      cleanService(byId.has(s.id) ? { ...byId.get(s.id), ...s } : s)
+      byId.has(s.id) ? mergeService(byId.get(s.id), s) : cleanService(s)
     );
     const invalid = nextServices.map(serviceCredentialError).find(Boolean);
     if (invalid) return res.status(422).json({ error: "validation", message: invalid });
     cfg.services = nextServices;
   }
-  if (proxmox) cfg.proxmox = { ...cfg.proxmox, ...proxmox, url: normalizeUrl(proxmox.url) };
+  if (proxmox) cfg.proxmox = { ...cfg.proxmox, ...proxmox, tokenId: proxmox.tokenId || cfg.proxmox?.tokenId || "", tokenSecret: proxmox.tokenSecret || cfg.proxmox?.tokenSecret || "", url: normalizeUrl(proxmox.url) };
+  if (req.body?.auth) cfg.auth = authFromInput(req.body.auth, cfg.auth);
   writeConfig(cfg);
-  res.json(cfg);
+  if (authState(cfg).enabled) issueAuthSession(res);
+  res.json(publicConfig(cfg));
 });
 
 app.post("/api/services", (req, res) => {
@@ -212,19 +386,19 @@ app.post("/api/services", (req, res) => {
   if (credentialError) return res.status(422).json({ error: "validation", message: credentialError });
   cfg.services.push(svc);
   writeConfig(cfg);
-  res.json(svc);
+  res.json(publicService(svc));
 });
 
 app.put("/api/services/:id", (req, res) => {
   const cfg = readConfig();
   const idx = cfg.services.findIndex((s) => s.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "not found" });
-  const updated = cleanService({ ...cfg.services[idx], ...req.body, id: req.params.id });
+  const updated = mergeService(cfg.services[idx], { ...req.body, id: req.params.id });
   const credentialError = serviceCredentialError(updated);
   if (credentialError) return res.status(422).json({ error: "validation", message: credentialError });
   cfg.services[idx] = updated;
   writeConfig(cfg);
-  res.json(cfg.services[idx]);
+  res.json(publicService(cfg.services[idx]));
 });
 
 function safeSettingsBackup(cfg) {
@@ -292,8 +466,10 @@ app.post("/api/settings/restore", (req, res) => {
   cfg.adguard = { ...cfg.adguard, ...(backup.adguard || {}) };
   cfg.proxmox = { ...cfg.proxmox, ...(backup.proxmox || {}) };
   cfg.services = backup.services.map((svc) => mergeRestoredService(byId.get(svc.id), svc));
+  const invalid = cfg.services.map(serviceCredentialError).find(Boolean);
+  if (invalid) return res.status(422).json({ error: "validation", message: invalid });
   writeConfig(cfg);
-  res.json(cfg);
+  res.json(publicConfig(cfg));
 });
 
 app.delete("/api/services/:id", (req, res) => {
@@ -361,7 +537,17 @@ async function getDockerContainers() {
   return containers;
 }
 
-const jellyfinAgent = new https.Agent({ rejectUnauthorized: false });
+const TLS_CA_FILE = process.env.TLS_CA_FILE || "";
+const ALLOW_INSECURE_TLS = process.env.ALLOW_INSECURE_TLS === "true";
+let trustedCa = null;
+try { if (TLS_CA_FILE) trustedCa = fs.readFileSync(TLS_CA_FILE); } catch { trustedCa = null; }
+function createHttpsAgent() {
+  if (trustedCa) return new https.Agent({ ca: [...tls.rootCertificates, trustedCa.toString()], rejectUnauthorized: true });
+  if (ALLOW_INSECURE_TLS) return new https.Agent({ rejectUnauthorized: false });
+  return undefined;
+}
+
+const jellyfinAgent = createHttpsAgent();
 
 function jellyfinRequest(baseUrl, apiKey, agent, tokenHeader = "Authorization") {
   const o = { timeout: PROBE_TIMEOUT };
@@ -573,6 +759,28 @@ async function fetchCustomApiInfo(baseUrl, widgetConfig) {
   };
 }
 
+function mapNextcloudInfo(data) {
+  const nextcloud = data?.nextcloud || {};
+  const system = nextcloud.system || {};
+  const storage = nextcloud.storage || {};
+  const shares = nextcloud.shares || {};
+  const activeUsers = data?.activeUsers ?? data?.activeusers ?? null;
+  return {
+    cpuLoad: system.cpuload ?? data?.cpuload ?? data?.cpuLoad ?? null,
+    memoryUsage: system.mem_total != null && system.mem_free != null
+      ? system.mem_total - system.mem_free
+      : data?.memoryusage ?? data?.memoryUsage ?? null,
+    freeSpace: system.freespace ?? data?.freespace ?? data?.freeSpace ?? null,
+    activeUsers: typeof activeUsers === "number"
+      ? activeUsers
+      : activeUsers && typeof activeUsers === "object"
+        ? Number(activeUsers.last24hours ?? activeUsers.last1hour ?? activeUsers.last5minutes) || 0
+        : null,
+    files: storage.num_files ?? data?.numFiles ?? data?.numfiles ?? null,
+    shares: shares.num_shares ?? data?.numShares ?? data?.numshares ?? null
+  };
+}
+
 async function fetchNextcloudInfo(baseUrl, widgetConfig) {
   const base = normalizeUrl(baseUrl).replace(/\/$/, "");
   if (!base) return {};
@@ -585,15 +793,7 @@ async function fetchNextcloudInfo(baseUrl, widgetConfig) {
   if (response.status === 401 || response.status === 403) return { authError: "invalid-credentials" };
   if (!response.ok) return { error: `Nextcloud returned HTTP ${response.status}` };
   const payload = await response.json();
-  const data = payload?.ocs?.data || payload?.data || {};
-  return {
-    cpuLoad: data.cpuload ?? data.cpuLoad ?? null,
-    memoryUsage: data.memoryusage ?? data.memoryUsage ?? null,
-    freeSpace: data.freespace ?? data.freeSpace ?? null,
-    activeUsers: data.activeUsers ?? data.activeusers ?? null,
-    files: data.numFiles ?? data.numfiles ?? null,
-    shares: data.numShares ?? data.numshares ?? null
-  };
+  return mapNextcloudInfo(payload?.ocs?.data || payload?.data || {});
 }
 
 async function fetchArrInfo(baseUrl, apiKey, type) {
@@ -776,7 +976,7 @@ app.get("/api/services/:id/info", async (req, res) => {
     if (svc.type === "portainer" && svc.details && svc.url) result.portainer = await fetchPortainerInfo(svc.url, svc.apiKey);
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: "failed to read service info", detail: String(err) });
+    res.status(500).json({ error: "failed to read service info" });
   }
 });
 
@@ -873,7 +1073,7 @@ app.get("/api/system", async (req, res) => {
       hostname: osInfo.hostname
     });
   } catch (err) {
-    res.status(500).json({ error: "failed to read system stats", detail: String(err) });
+    res.status(500).json({ error: "failed to read system stats" });
   }
 });
 
@@ -961,7 +1161,7 @@ app.get("/api/ports", async (req, res) => {
     }
     res.json({ system, docker, dockerAvailable });
   } catch (err) {
-    res.status(500).json({ error: "failed to read listening ports", detail: String(err) });
+    res.status(500).json({ error: "failed to read listening ports" });
   }
 });
 
@@ -1016,7 +1216,10 @@ app.get("/api/rss", async (req, res) => {
   const cfg = readConfig();
   const feeds = cfg.rss?.feeds?.length ? cfg.rss.feeds : [];
   try {
-    const results = await Promise.allSettled(feeds.map((f) => rssParser.parseURL(f)));
+    const allowedFeeds = (await Promise.all(feeds.map(async (feed) => {
+      try { await assertSafeOutboundUrl(feed); return feed; } catch { return null; }
+    }))).filter(Boolean);
+    const results = await Promise.allSettled(allowedFeeds.map((f) => rssParser.parseURL(f)));
     const items = [];
     results.forEach((r) => {
       if (r.status === "fulfilled") {
@@ -1198,7 +1401,7 @@ app.get("/api/pihole", async (req, res) => {
       topAllowed
     });
   } catch (err) {
-    res.status(500).json({ error: "pihole fetch failed", detail: String(err) });
+    res.status(500).json({ error: "pihole fetch failed" });
   }
 });
 
@@ -1213,8 +1416,8 @@ app.get("/api/pihole", async (req, res) => {
 
 
 
-const adguardAgent = new https.Agent({ rejectUnauthorized: false });
-const proxmoxAgent = new https.Agent({ rejectUnauthorized: false });
+const adguardAgent = createHttpsAgent();
+const proxmoxAgent = createHttpsAgent();
 
 let glinetSession = { sid: null, touchedAt: 0 };
 
@@ -1386,7 +1589,7 @@ app.get("/api/adguard", async (req, res) => {
       topAllowed
     });
   } catch (err) {
-    res.status(500).json({ error: "adguard fetch failed", detail: String(err) });
+    res.status(500).json({ error: "adguard fetch failed" });
   }
 });
 
@@ -1464,8 +1667,7 @@ app.get("/api/proxmox", async (req, res) => {
     const r = await fetch(`${base}/api2/json/cluster/resources?type=vm`, options);
     if (!r.ok) {
       return res.status(502).json({
-        error: `Proxmox API returned ${r.status}`,
-        detail: await r.text()
+        error: `Proxmox API returned ${r.status}`
       });
     }
     const payload = await r.json();
@@ -1495,7 +1697,7 @@ app.get("/api/proxmox", async (req, res) => {
 
     res.json({ nodes, guests });
   } catch (err) {
-    res.status(500).json({ error: "failed to read Proxmox", detail: String(err) });
+    res.status(500).json({ error: "failed to read Proxmox" });
   }
 });
 
@@ -1558,8 +1760,7 @@ app.get("/api/proxmox/guest/:node/:type/:vmid", async (req, res) => {
       const r = await fetch(`${base}/api2/json/nodes/${encodeURIComponent(node)}/lxc/${vmid}/interfaces`, options);
       if (!r.ok) {
         return res.status(502).json({
-          error: `Proxmox API returned ${r.status}`,
-          detail: await r.text()
+          error: `Proxmox API returned ${r.status}`
         });
       }
       const payload = await r.json();
@@ -1584,7 +1785,7 @@ app.get("/api/proxmox/guest/:node/:type/:vmid", async (req, res) => {
 
     res.json({ ips });
   } catch (err) {
-    res.status(500).json({ error: "failed to read Proxmox guest", detail: String(err) });
+    res.status(500).json({ error: "failed to read Proxmox guest" });
   }
 });
 
@@ -1635,4 +1836,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, parseDockerPort, serviceCredentialError, safeSettingsBackup };
+module.exports = { app, mapNextcloudInfo, parseDockerPort, serviceCredentialError, safeSettingsBackup };

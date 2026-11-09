@@ -12,6 +12,17 @@
 </head>
 <body>
 
+<div id="loginScreen" class="login-screen hidden">
+  <form id="loginForm" class="login-panel">
+    <h1>Dashboard login</h1>
+    <p class="wizard-sub">Sign in to access your homelab dashboard.</p>
+    <input id="loginUsername" type="text" autocomplete="username" placeholder="Username" class="wizard-input small" required />
+    <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password" class="wizard-input small" required />
+    <button class="btn btn-primary" type="submit">Sign in</button>
+    <div id="loginError" class="settings-backup-status" role="alert"></div>
+  </form>
+</div>
+
 
 <div id="wizard" class="wizard hidden">
   <div class="wizard-panel">
@@ -151,6 +162,18 @@
           <p class="wizard-sub">Create it in Proxmox → Datacenter → Permissions → API Tokens with the <b>VM.Auditor</b> (or higher) role. The dashboard only reads.</p>
         </div>
 
+        <div class="security-setup">
+          <label class="checkbox-row">
+            <input type="checkbox" id="setupAuthEnabled" />
+            <span>Protect this dashboard with a login</span>
+          </label>
+          <div id="setupAuthFields" class="pihole-fields hidden">
+            <input id="setupAuthUsername" type="text" autocomplete="username" placeholder="Dashboard username" class="wizard-input small" />
+            <input id="setupAuthPassword" type="password" autocomplete="new-password" placeholder="Password (minimum 8 characters)" class="wizard-input small" />
+            <p class="wizard-sub">Use HTTPS through your reverse proxy when enabling login over an untrusted network.</p>
+          </div>
+        </div>
+
         <div class="wizard-actions">
           <button class="btn btn-ghost" data-prev>Back</button>
           <button class="btn btn-primary" id="finishSetup">Enter dashboard</button>
@@ -269,6 +292,7 @@
       <button class="tab-btn" data-tab="adguard">AdGuard</button>
       <button class="tab-btn" data-tab="proxmox">Proxmox</button>
       <button class="tab-btn" data-tab="system">System Info</button>
+      <button class="tab-btn" data-tab="security">Security</button>
     </div>
 
     <div class="modal-body">
@@ -427,6 +451,17 @@
           </div>
           <div id="settingsBackupStatus" class="settings-backup-status" role="status"></div>
         </div>
+      </div>
+
+      <div class="tab-pane" data-pane="security">
+        <p class="wizard-sub">Optional dashboard login protection. Existing sessions remain active until they expire or you log out.</p>
+        <label class="checkbox-row">
+          <input type="checkbox" id="settingsAuthEnabled" />
+          <span>Require login to access the dashboard API</span>
+        </label>
+        <input id="settingsAuthUsername" type="text" autocomplete="username" placeholder="Dashboard username" class="wizard-input small" />
+        <input id="settingsAuthPassword" type="password" autocomplete="new-password" placeholder="New password (leave blank to keep current)" class="wizard-input small" />
+        <p class="wizard-sub">Minimum 8 characters when setting a new password. Use HTTPS through your reverse proxy.</p>
       </div>
     </div>
   </div>

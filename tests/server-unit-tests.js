@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { parseDockerPort, serviceCredentialError, safeSettingsBackup } = require("../server");
+const { mapNextcloudInfo, parseDockerPort, serviceCredentialError, safeSettingsBackup } = require("../server");
 
 function testDockerPortParsing() {
   assert.deepStrictEqual(
@@ -21,6 +21,19 @@ function testDockerPortParsing() {
 }
 
 testDockerPortParsing();
+
+assert.deepStrictEqual(
+  mapNextcloudInfo({
+    nextcloud: {
+      system: { freespace: 682060939264 },
+      storage: { num_files: 462 },
+      shares: { num_shares: 3 }
+    },
+    activeUsers: { last24hours: 1, last1hour: 1 }
+  }),
+  { cpuLoad: null, memoryUsage: null, freeSpace: 682060939264, activeUsers: 1, files: 462, shares: 3 },
+  "maps nested Nextcloud serverinfo metrics"
+);
 
 assert.strictEqual(
   serviceCredentialError({ type: "plex", details: true, apiKey: "" }),

@@ -228,9 +228,17 @@ here's what each piece maps to under the hood:
 | Service widget credentials | Settings → Services → select a service integration | Credentials and visible metrics are saved with the service |
 | Custom API endpoint and metrics | Settings → Services → Service widget → Custom API | See [Custom API services](#custom-api-services) |
 | Stats shown in the first row | Settings → System Info | Pick up to 6 of the 10 stats for the collapsed first row; the rest appear behind "Show all" |
+| Dashboard login | Wizard step 6, or Settings → Security | Optional login protection; credentials are stored as a scrypt hash and dashboard API responses redact integration secrets |
 | Timezone | `docker-compose.yml` → `TZ` | Set before first build, see below |
 | Primary disk path | `docker-compose.yml` → `HOST_DISK_PATH` | Defaults to `/hostfs`, see below |
 | Docker ports | `docker-compose.yml` Docker socket mount | The dashboard reads Docker metadata read-only to show containers, status, images, IDs, and published ports |
+
+### TLS verification for self-signed integrations
+
+HTTPS certificate verification is enabled by default. For a self-signed
+integration, prefer mounting its CA certificate and setting `TLS_CA_FILE` in
+the container environment. `ALLOW_INSECURE_TLS=true` is available only as an
+explicit fallback for trusted private networks.
 
 ### Changing the timezone
 

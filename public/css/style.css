@@ -1162,3 +1162,6 @@ input { font-family: inherit; }
   .rail-step { border-left: none; border-bottom: 2px solid transparent; white-space: nowrap; }
   .rail-step.active { border-bottom-color: var(--accent); border-left-color: transparent; }
 }
+.login-screen { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: var(--bg); }
+.login-panel { width: min(380px, calc(100vw - 32px)); display: grid; gap: 12px; padding: 28px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+.login-panel h1 { margin: 0; color: var(--text); font-size: 22px; }

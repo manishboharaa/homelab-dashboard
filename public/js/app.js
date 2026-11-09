@@ -14,6 +14,7 @@ const SERVICE_CATEGORIES = ["Media","Downloads","Network","Management","Automati
 
 async function boot() {
   const res = await fetch("/api/config");
+  if (res.status === 401) return showLogin();
   CONFIG = await res.json();
 
   if (!CONFIG.setupComplete) {
@@ -23,6 +24,29 @@ async function boot() {
     document.getElementById("dashboard").classList.remove("hidden");
     initDashboard();
   }
+}
+
+function showLogin() {
+  const screen = document.getElementById("loginScreen");
+  screen.classList.remove("hidden");
+  document.getElementById("loginForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const error = document.getElementById("loginError");
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: document.getElementById("loginUsername").value,
+        password: document.getElementById("loginPassword").value
+      })
+    });
+    if (!res.ok) {
+      error.textContent = res.status === 429 ? "Too many attempts. Try again later." : "Invalid username or password.";
+      return;
+    }
+    screen.classList.add("hidden");
+    boot();
+  });
 }
 
 
@@ -98,6 +122,10 @@ function initWizard() {
     applyAdguardModeUi("adguard");
   });
 
+  document.getElementById("setupAuthEnabled").addEventListener("change", (e) => {
+    document.getElementById("setupAuthFields").classList.toggle("hidden", !e.target.checked);
+  });
+
   document.getElementById("finishSetup").addEventListener("click", finishSetup);
 
   showStep(1);
@@ -165,10 +193,10 @@ function renderSelected() {
   wizardSelected.forEach((svc, name) => {
     const chip = document.createElement("div");
     chip.className = "selected-chip";
-    chip.innerHTML = `
-      ${svc.icon ? `<img src="${svc.icon}" onerror="this.style.display='none'" />` : ""}
-      <span>${svc.name}</span>
-      <input class="chip-url" placeholder="IP or URL" value="${svc.url || ""}" />
+      chip.innerHTML = `
+      ${svc.icon ? `<img src="${escapeAttr(safeExternalUrl(svc.icon))}" onerror="this.style.display='none'" />` : ""}
+      <span>${escapeHtml(svc.name)}</span>
+       <input class="chip-url" placeholder="IP or URL" value="${escapeAttr(svc.url || "")}" />
       <button title="Remove">✕</button>
     `;
     chip.querySelector(".chip-url").addEventListener("input", (e) => {
@@ -266,6 +294,12 @@ async function finishSetup() {
     tokenId: document.getElementById("setupProxmoxTokenId").value.trim(),
     tokenSecret: document.getElementById("setupProxmoxTokenSecret").value
   };
+  const authEnabled = document.getElementById("setupAuthEnabled").checked;
+  const auth = {
+    enabled: authEnabled,
+    username: document.getElementById("setupAuthUsername").value.trim(),
+    password: document.getElementById("setupAuthPassword").value
+  };
 
   const body = {
     profile: { name },
@@ -274,7 +308,8 @@ async function finishSetup() {
     rss: { feeds: CONFIG.rss.feeds },
     pihole,
     adguard,
-    proxmox
+    proxmox,
+    auth
   };
 
   const res = await fetch("/api/setup", {
@@ -911,7 +946,7 @@ async function refreshRss() {
     body.innerHTML = items
       .map(
         (it) => `
-      <a class="rss-item" href="${it.link}" target="_blank" rel="noopener">
+      <a class="rss-item" href="${escapeAttr(safeExternalUrl(it.link))}" target="_blank" rel="noopener">
         <div class="rss-item-title">${escapeHtml(it.title)}</div>
         <div class="rss-item-meta">${escapeHtml(it.source || "")}${it.pubDate ? " · " + fmtRelTime(it.pubDate) : ""}</div>
       </a>`
@@ -926,6 +961,15 @@ function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str || "";
   return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return escapeHtml(str).replace(/`/g, "&#96;").replace(/'/g, "&#39;");
+}
+
+function safeExternalUrl(value) {
+  const url = String(value || "").trim();
+  return /^https?:\/\//i.test(url) ? url : "#";
 }
 
 let toastTimer = null;
@@ -1096,7 +1140,7 @@ function moveServiceToCategory(id, cat) {
 
 function makeServiceTile(svc) {
   const tile = document.createElement("a");
-  tile.href = svc.url && !/^https?:\/\//i.test(svc.url) ? `http://${svc.url}` : svc.url || "#";
+  tile.href = safeExternalUrl(svc.url && !/^https?:\/\//i.test(svc.url) ? `http://${svc.url}` : svc.url || "#");
   tile.target = "_blank";
   tile.rel = "noopener";
   tile.className = "service-tile";
@@ -1109,7 +1153,7 @@ function makeServiceTile(svc) {
   tile.dataset.rows = rowCount(svc.rows);
 
   const iconHtml = svc.icon
-    ? `<img src="${svc.icon}" onerror="this.outerHTML=letterAvatar('${escapeHtml(svc.name)}')" />`
+    ? `<img src="${escapeAttr(safeExternalUrl(svc.icon))}" onerror="this.outerHTML=letterAvatar('${escapeHtml(svc.name)}')" />`
     : letterAvatar(svc.name);
 
   tile.innerHTML = `
@@ -1120,7 +1164,7 @@ function makeServiceTile(svc) {
       </div>
       <div class="service-tile-right">
         <span class="service-uptime-inline" id="uptime-${svc.id}"></span>
-        <span class="status-dot" data-url="${svc.url}"></span>
+        <span class="status-dot" data-url="${escapeAttr(svc.url)}"></span>
       </div>
     </div>
     <div class="service-more">
@@ -1907,6 +1951,9 @@ function openSettings() {
   document.getElementById("settingsProxmoxUrl").value = CONFIG.proxmox?.url || "";
   document.getElementById("settingsProxmoxTokenId").value = CONFIG.proxmox?.tokenId || "";
   document.getElementById("settingsProxmoxTokenSecret").value = CONFIG.proxmox?.tokenSecret || "";
+  document.getElementById("settingsAuthEnabled").checked = !!CONFIG.auth?.enabled;
+  document.getElementById("settingsAuthUsername").value = CONFIG.auth?.username || "";
+  document.getElementById("settingsAuthPassword").value = "";
   updateSaveState(activeSettingsTab);
 }
 
@@ -2009,7 +2056,7 @@ function makeServiceRow(svc, opts) {
   row.className = "settings-service-row" + (isNew ? " ss-row-new" : "") + (isRemoved ? " ss-row-removed" : "");
   row.dataset.id = svc.id;
   const iconHtml = svc.icon
-    ? `<img src="${svc.icon}" onerror="this.outerHTML=letterAvatar('${escapeHtml(svc.name)}')" />`
+    ? `<img src="${escapeAttr(safeExternalUrl(svc.icon))}" onerror="this.outerHTML=letterAvatar('${escapeHtml(svc.name)}')" />`
     : letterAvatar(svc.name);
 
   const top = document.createElement("div");
@@ -2411,7 +2458,7 @@ function renderSettingsIconPreview() {
   if (!preview) return;
   if (settingsPick?.icon) {
     preview.classList.remove("hidden");
-    preview.innerHTML = `<img src="${settingsPick.icon}" onerror="this.style.display='none'" />`;
+    preview.innerHTML = `<img src="${escapeAttr(safeExternalUrl(settingsPick.icon))}" onerror="this.style.display='none'" />`;
   } else {
     preview.classList.add("hidden");
     preview.innerHTML = "";
@@ -2837,6 +2884,7 @@ function initSettingsModal() {
   bindDirty(["settingsPiholeEnabled", "settingsPiholeUrl", "settingsPiholeKey"], "pihole");
   bindDirty(["settingsAdguardEnabled", "settingsAdguardUrl", "settingsAdguardUser", "settingsAdguardPass"], "adguard");
   bindDirty(["settingsProxmoxEnabled", "settingsProxmoxUrl", "settingsProxmoxTokenId", "settingsProxmoxTokenSecret"], "proxmox");
+  bindDirty(["settingsAuthEnabled", "settingsAuthUsername", "settingsAuthPassword"], "security");
   const servicesList = document.getElementById("settingsServicesList");
   if (servicesList) {
     servicesList.addEventListener("input", () => updateSaveState("services"));
@@ -2871,6 +2919,11 @@ function tabDirty(tab) {
   if (tab === "system") {
     const cur = [...document.querySelectorAll("#settingsStatsList input:checked")].map((i) => i.value).slice(0, 6);
     return JSON.stringify(cur) !== JSON.stringify(pinnedStats());
+  }
+  if (tab === "security") {
+    return checked("settingsAuthEnabled") !== !!CONFIG.auth?.enabled
+      || val("settingsAuthUsername").trim() !== (CONFIG.auth?.username || "")
+      || !!val("settingsAuthPassword");
   }
   if (tab === "weather") {
     if (!pendingWeather) return false;
@@ -2936,6 +2989,13 @@ async function saveTab(tab) {
         .slice(0, 6)
     };
   }
+  if (tab === "security") {
+    payload.auth = {
+      enabled: document.getElementById("settingsAuthEnabled").checked,
+      username: document.getElementById("settingsAuthUsername").value.trim(),
+      password: document.getElementById("settingsAuthPassword").value
+    };
+  }
   const res = await fetch("/api/settings", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -2985,22 +3045,22 @@ async function saveRss() {
 function serviceCredentialError(svc) {
   const type = svc?.type;
   const apiKeyTypes = ["jellyfin", "emby", "plex", "immich", "sonarr", "radarr", "lidarr", "prowlarr", "overseerr", "portainer"];
-  if (apiKeyTypes.includes(type) && svc.details && !String(svc.apiKey || "").trim()) {
+  if (apiKeyTypes.includes(type) && svc.details && !String(svc.apiKey || "").trim() && !svc.credentialState?.apiKey) {
     const labels = { jellyfin: "Jellyfin", emby: "Emby", plex: "Plex", immich: "Immich", overseerr: "Overseerr", portainer: "Portainer" };
     return `${labels[type] || type} requires an API key or token.`;
   }
-  if (type === "nginx-proxy-manager" && (!String(svc.npmEmail || "").trim() || !String(svc.npmPassword || ""))) {
+  if (type === "nginx-proxy-manager" && (!String(svc.npmEmail || "").trim() || !String(svc.npmPassword || "")) && !svc.credentialState?.npm) {
     return "Nginx Proxy Manager requires both login email and password.";
   }
   if (type === "nextcloud") {
     const cfg = svc.widgetConfig || {};
-    if (!String(cfg.token || "").trim() && (!String(cfg.username || "").trim() || !String(cfg.password || ""))) {
+    if (!String(cfg.token || "").trim() && (!String(cfg.username || "").trim() || !String(cfg.password || "")) && !svc.credentialState?.widget?.token && !svc.credentialState?.widget?.username) {
       return "Nextcloud requires an NC-Token or both username and password.";
     }
   }
   if (type === "qbittorrent") {
     const cfg = svc.widgetConfig || {};
-    if (!String(cfg.username || "").trim() || !String(cfg.password || "")) {
+    if ((!String(cfg.username || "").trim() || !String(cfg.password || "")) && !svc.credentialState?.widget?.username) {
       return "qBittorrent requires both WebUI username and password.";
     }
   }
