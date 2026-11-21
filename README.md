@@ -257,6 +257,14 @@ isolated network stack — the same approach tools like Netdata use. With
 host networking there's no `ports:` mapping; the app binds directly to
 `$PORT` (`8080` by default) on the host itself.
 
+The container runs as a non-root user (`UID:GID`, default `1000:1000`) with all
+Linux capabilities dropped and `no-new-privileges` enabled. The host mounts
+below still expose host files and the Docker socket to the app, so only run
+this on a network you trust. To use a different host user, set `UID` and `GID`
+in your shell before `docker compose up`; for the Docker socket, set
+`DOCKER_GID` to your host's `docker` group id
+(`getent group docker | cut -d: -f3`).
+
 If you'd rather not use host networking (e.g. you want stricter container
 isolation), remove `network_mode: host` from `docker-compose.yml` and add
 back:
@@ -279,9 +287,13 @@ volume mount to the `volumes:` block of `docker-compose.yml`:
 - /var/run/docker.sock:/var/run/docker.sock:ro
 ```
 
-This grants the container **read-only** access to your Docker daemon.
-It's off by default since mounting the socket is a real privilege grant —
-only enable it if you're comfortable with that tradeoff.
+This grants the container **read-only** access to your Docker daemon. Read-only
+here only blocks writes to the socket file itself: the Docker API can still
+create privileged containers, so anyone who can execute code in this container
+effectively has root on the host. The included compose file enables this mount;
+the non-root user, dropped capabilities, and `no-new-privileges` limit other
+attack paths but do **not** remove that risk. Remove the mount if you don't need
+the Docker/container-uptime tiles.
 
 The same mount powers **per-service uptime**: when you set a service's
 **Docker container name** in Settings, its tile reads the container's real

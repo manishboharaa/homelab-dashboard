@@ -4,6 +4,13 @@ services:
     container_name: homelab-dashboard
     restart: unless-stopped
     network_mode: host
+    user: "${UID:-1000}:${GID:-1000}"
+    group_add:
+      - "${DOCKER_GID:-972}"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
       - PORT=8080
       - TZ=Europe/Lisbon
