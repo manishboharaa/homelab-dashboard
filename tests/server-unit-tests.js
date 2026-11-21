@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { apiAccess, mapNextcloudInfo, parseDockerPort, probeResponseIsAvailable, serviceCredentialError, safeSettingsBackup } = require("../server");
+const { apiAccess, assertSafeOutboundUrl, blockedHost, mapNextcloudInfo, parseDockerPort, probeResponseIsAvailable, serviceCredentialError, safeSettingsBackup } = require("../server");
 
 function testDockerPortParsing() {
   assert.deepStrictEqual(
@@ -25,6 +25,27 @@ testDockerPortParsing();
 assert.strictEqual(probeResponseIsAvailable(302), true, "treats a safe HTTP redirect as reachable");
 assert.strictEqual(probeResponseIsAvailable(307), true, "treats a temporary HTTP redirect as reachable");
 assert.strictEqual(probeResponseIsAvailable(500), false, "treats server errors as unavailable");
+
+const blockedHostCases = [
+  ["IPv4-mapped loopback (hex)", "::ffff:7f00:1", true],
+  ["IPv4-mapped loopback (dotted)", "::ffff:127.0.0.1", true],
+  ["IPv4-mapped metadata (hex)", "::ffff:a9fe:a9fe", true],
+  ["IPv4-mapped metadata (dotted)", "::ffff:169.254.169.254", true],
+  ["IPv6 loopback", "::1", true],
+  ["IPv6 unique local", "fd00::1", true],
+  ["IPv6 link-local", "fe80::1", true],
+  ["IPv6 multicast", "ff02::1", true],
+  ["CGNAT", "100.64.0.1", true],
+  ["cloud metadata hostname", "metadata.google.internal", true],
+  ["homelab LAN 192.168", "192.168.1.10", false],
+  ["homelab LAN 10", "10.0.0.1", false],
+  ["homelab LAN 172.16", "172.16.0.1", false],
+  ["public IPv4", "8.8.8.8", false],
+  ["public hostname", "example.com", false]
+];
+for (const [name, host, expected] of blockedHostCases) {
+  assert.strictEqual(blockedHost(host), expected, name);
+}
 
 const apiAccessCases = [
   ["pre-setup config is readable", { path: "/config", setupComplete: false, authEnabled: false, authenticated: false }, "allow"],
@@ -80,4 +101,12 @@ assert.strictEqual(backup.services[0].widgetConfig.password, undefined, "backup 
 assert.strictEqual(backup.pihole.apiKey, undefined, "backup excludes Pi-hole key");
 assert.strictEqual(backup.adguard.password, undefined, "backup excludes AdGuard password");
 assert.strictEqual(backup.proxmox.tokenSecret, undefined, "backup excludes Proxmox secret");
-console.log("20 server unit tests passed");
+(async () => {
+  await assert.rejects(assertSafeOutboundUrl("http://[::ffff:127.0.0.1]:8080/"), /not allowed/, "rejects mapped loopback URL");
+  await assert.rejects(assertSafeOutboundUrl("http://[::ffff:169.254.169.254]/"), /not allowed/, "rejects mapped metadata URL");
+  await assertSafeOutboundUrl("http://192.168.1.10/");
+  console.log("38 server unit tests passed");
+})().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

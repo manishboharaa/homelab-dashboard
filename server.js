@@ -2,6 +2,7 @@ const express = require("express");
 const crypto = require("crypto");
 const fs = require("fs");
 const https = require("https");
+const http = require("http");
 const dns = require("dns").promises;
 const net = require("net");
 const tls = require("tls");
@@ -46,14 +47,47 @@ const authSessions = new Map();
 const loginAttempts = new Map();
 const outboundDnsCache = new Map();
 
-function blockedHost(hostname) {
-  const host = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
-  if (!host || host === "localhost" || host.endsWith(".localhost") || host === "metadata.google.internal") return true;
-  if (net.isIP(host) === 4) {
-    const octets = host.split(".").map(Number);
-    return octets[0] === 0 || octets[0] === 127 || (octets[0] === 169 && octets[1] === 254);
+function normalizeIpAddress(value) {
+  let host = String(value || "").toLowerCase().replace(/^\[|\]$/g, "");
+  if (net.isIP(host) !== 6) return host;
+  try {
+    return new URL(`http://[${host}]/`).hostname.replace(/^\[|\]$/g, "");
+  } catch {
+    return host;
   }
-  if (net.isIP(host) === 6) return host === "::" || host === "::1" || host.startsWith("fe8") || host.startsWith("fe9") || host.startsWith("fea") || host.startsWith("feb");
+}
+
+function mappedIPv4(value) {
+  const host = normalizeIpAddress(value);
+  if (net.isIP(host) !== 6) return null;
+  const match = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+  if (!match) return null;
+  const hi = parseInt(match[1], 16);
+  const lo = parseInt(match[2], 16);
+  return `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+}
+
+function blockedHost(hostname) {
+  const host = normalizeIpAddress(mappedIPv4(hostname) || hostname);
+  if (!host || host === "localhost" || host.endsWith(".localhost") ||
+      host === "metadata.google.internal" || host === "metadata" || host === "instance-data") return true;
+  if (net.isIP(host) === 4) {
+    const o = host.split(".").map(Number);
+    // RFC1918 LAN ranges stay allowed so homelab services keep working.
+    return (
+      o[0] === 0 || o[0] === 127 ||
+      (o[0] === 169 && o[1] === 254) ||
+      (o[0] === 100 && o[1] >= 64 && o[1] <= 127) ||
+      (o[0] === 192 && o[1] === 0 && o[2] === 0) ||
+      (o[0] === 198 && (o[1] === 18 || o[1] === 19)) ||
+      o[0] >= 224
+    );
+  }
+  if (net.isIP(host) === 6) {
+    return host === "::" || host === "::1" ||
+      /^f[cd]/.test(host) || /^fe[89ab]/.test(host) ||
+      /^ff/.test(host) || host.startsWith("2001:db8");
+  }
   return false;
 }
 
@@ -66,20 +100,36 @@ async function assertSafeOutboundUrl(value) {
   const cached = outboundDnsCache.get(key);
   if (cached && cached.expiresAt > Date.now()) {
     if (cached.blocked) throw new Error("outbound URL resolves to a restricted address");
-    return;
+    return { protocol: parsed.protocol, addresses: cached.addresses };
   }
   let addresses = [];
   try {
     addresses = (await dns.lookup(key, { all: true })).map((entry) => entry.address);
   } catch {}
-  const restricted = addresses.some((address) => blockedHost(address));
-  outboundDnsCache.set(key, { blocked: restricted, expiresAt: Date.now() + 60 * 1000 });
-  if (restricted) throw new Error("outbound URL resolves to a restricted address");
+  const blocked = addresses.length === 0 || addresses.some((address) => blockedHost(address));
+  outboundDnsCache.set(key, { blocked, addresses, expiresAt: Date.now() + 60 * 1000 });
+  if (blocked) throw new Error("outbound URL resolves to a restricted address");
+  return { protocol: parsed.protocol, addresses };
+}
+
+function pinnedAgent(baseAgent, protocol, addresses) {
+  const AgentClass = protocol === "https:" ? https.Agent : http.Agent;
+  const options = { ...(baseAgent && baseAgent.options) };
+  options.lookup = (hostname, lookupOptions, callback) => {
+    const family = lookupOptions && lookupOptions.family ? lookupOptions.family : 4;
+    const address = addresses.find((ip) => net.isIP(ip) === family) || addresses[0];
+    if (lookupOptions && lookupOptions.all) {
+      return callback(null, addresses.map((ip) => ({ address: ip, family: net.isIP(ip) })));
+    }
+    callback(null, address, net.isIP(address));
+  };
+  return new AgentClass(options);
 }
 
 async function fetch(url, options = {}) {
-  await assertSafeOutboundUrl(url);
-  return rawFetch(url, { ...options, redirect: options.redirect || "error" });
+  const target = await assertSafeOutboundUrl(url);
+  const agent = pinnedAgent(options.agent, target.protocol, target.addresses);
+  return rawFetch(url, { ...options, agent, redirect: options.redirect || "error" });
 }
 
 function authState(cfg) {
@@ -1246,7 +1296,12 @@ app.get("/api/rss", async (req, res) => {
     const allowedFeeds = (await Promise.all(feeds.map(async (feed) => {
       try { await assertSafeOutboundUrl(feed); return feed; } catch { return null; }
     }))).filter(Boolean);
-    const results = await Promise.allSettled(allowedFeeds.map((f) => rssParser.parseURL(f)));
+    const results = await Promise.allSettled(allowedFeeds.map(async (f) => {
+      const r = await fetch(f, { timeout: 8000 });
+      const xml = await r.text();
+      if (!r.ok) throw new Error(`feed returned ${r.status}`);
+      return rssParser.parseString(xml);
+    }));
     const items = [];
     results.forEach((r) => {
       if (r.status === "fulfilled") {
@@ -1863,4 +1918,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { apiAccess, app, mapNextcloudInfo, parseDockerPort, probeResponseIsAvailable, serviceCredentialError, safeSettingsBackup };
+module.exports = { apiAccess, app, assertSafeOutboundUrl, blockedHost, mapNextcloudInfo, parseDockerPort, probeResponseIsAvailable, serviceCredentialError, safeSettingsBackup };

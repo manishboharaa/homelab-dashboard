@@ -245,6 +245,16 @@ integration, prefer mounting its CA certificate and setting `TLS_CA_FILE` in
 the container environment. `ALLOW_INSECURE_TLS=true` is available only as an
 explicit fallback for trusted private networks.
 
+### Outbound URL safety
+
+Service, feed, and integration URLs are fetched by the server. Loopback,
+link-local, CGNAT (`100.64.0.0/10`), IPv6 unique-local/link-local, multicast,
+and cloud-metadata addresses are rejected — including IPv4-mapped IPv6
+spellings such as `http://[::ffff:127.0.0.1]/`. Each request connects only
+to the IP address validated for its hostname, and redirects are not followed.
+Private LAN ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) remain
+allowed so homelab services keep working.
+
 ### Changing the timezone
 
 Edit `TZ` in `docker-compose.yml` to your
