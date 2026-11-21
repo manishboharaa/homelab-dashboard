@@ -91,6 +91,13 @@ function authState(cfg) {
   };
 }
 
+function apiAccess({ path, setupComplete, authEnabled, authenticated }) {
+  if (path === "/login") return "allow";
+  if (!setupComplete) return path === "/config" || path === "/setup" ? "allow" : "setup-required";
+  if (path === "/setup") return "conflict";
+  return authEnabled && !authenticated ? "auth-required" : "allow";
+}
+
 function hashPassword(password, salt = crypto.randomBytes(16)) {
   const derived = crypto.scryptSync(String(password), salt, 64);
   return `scrypt$${salt.toString("base64url")}$${derived.toString("base64url")}`;
@@ -169,17 +176,26 @@ app.post("/api/login", (req, res) => {
 });
 
 app.use("/api", (req, res, next) => {
-  if (req.path === "/login") return next();
-  const state = authState(readConfig());
-  if (!state.enabled) return next();
-  const token = cookieValue(req, "hdash_session");
-  const expiresAt = authSessions.get(token);
-  if (!expiresAt || expiresAt <= Date.now()) {
-    authSessions.delete(token);
-    return res.status(401).json({ error: "authentication required" });
+  const cfg = readConfig();
+  const state = authState(cfg);
+  const setupComplete = cfg.setupComplete === true;
+  let authenticated = false;
+  let token = "";
+  let expiresAt;
+  if (setupComplete && state.enabled) {
+    token = cookieValue(req, "hdash_session");
+    expiresAt = authSessions.get(token);
+    authenticated = !!expiresAt && expiresAt > Date.now();
   }
-  authSessions.set(token, Date.now() + 12 * 60 * 60 * 1000);
-  next();
+  const access = apiAccess({ path: req.path, setupComplete, authEnabled: state.enabled, authenticated });
+  if (access === "allow") {
+    if (authenticated) authSessions.set(token, Date.now() + 12 * 60 * 60 * 1000);
+    return next();
+  }
+  if (access === "setup-required") return res.status(403).json({ error: "setup required" });
+  if (access === "conflict") return res.status(409).json({ error: "setup already completed" });
+  if (expiresAt && expiresAt <= Date.now()) authSessions.delete(token);
+  return res.status(401).json({ error: "authentication required" });
 });
 
 function ensureConfig() {
@@ -318,6 +334,11 @@ app.get("/api/config", (req, res) => {
 app.post("/api/setup", (req, res) => {
   const cfg = readConfig();
   const { profile, services, weather, rss, pihole, adguard, system, proxmox } = req.body || {};
+  const auth = authFromInput(req.body?.auth, cfg.auth);
+  if (!auth.enabled) {
+    return res.status(422).json({ error: "validation", message: "Dashboard login must be enabled during setup." });
+  }
+  cfg.auth = auth;
 
   if (profile) cfg.profile = { ...cfg.profile, ...profile };
   if (Array.isArray(services)) {
@@ -331,7 +352,6 @@ app.post("/api/setup", (req, res) => {
   if (adguard) cfg.adguard = { ...cfg.adguard, ...adguard, username: adguard.username || cfg.adguard?.username || "", password: adguard.password || cfg.adguard?.password || "", url: normalizeUrl(adguard.url) };
   if (system) cfg.system = { ...cfg.system, ...system };
   if (proxmox) cfg.proxmox = { ...cfg.proxmox, ...proxmox, tokenId: proxmox.tokenId || cfg.proxmox?.tokenId || "", tokenSecret: proxmox.tokenSecret || cfg.proxmox?.tokenSecret || "", url: normalizeUrl(proxmox.url) };
-  if (req.body?.auth) cfg.auth = authFromInput(req.body.auth, cfg.auth);
 
   cfg.setupComplete = true;
   writeConfig(cfg);
@@ -1843,4 +1863,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, mapNextcloudInfo, parseDockerPort, probeResponseIsAvailable, serviceCredentialError, safeSettingsBackup };
+module.exports = { apiAccess, app, mapNextcloudInfo, parseDockerPort, probeResponseIsAvailable, serviceCredentialError, safeSettingsBackup };

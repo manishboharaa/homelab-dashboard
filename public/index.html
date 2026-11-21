@@ -164,12 +164,12 @@
 
         <div class="security-setup">
           <label class="checkbox-row">
-            <input type="checkbox" id="setupAuthEnabled" />
-            <span>Protect this dashboard with a login</span>
+            <input type="checkbox" id="setupAuthEnabled" checked disabled />
+            <span>Protect this dashboard with a login (required)</span>
           </label>
-          <div id="setupAuthFields" class="pihole-fields hidden">
-            <input id="setupAuthUsername" type="text" autocomplete="username" placeholder="Dashboard username" class="wizard-input small" />
-            <input id="setupAuthPassword" type="password" autocomplete="new-password" placeholder="Password (minimum 8 characters)" class="wizard-input small" />
+          <div id="setupAuthFields" class="pihole-fields">
+            <input id="setupAuthUsername" type="text" autocomplete="username" placeholder="Dashboard username" class="wizard-input small" required />
+            <input id="setupAuthPassword" type="password" autocomplete="new-password" placeholder="Password (minimum 8 characters)" class="wizard-input small" required />
             <p class="wizard-sub">Use HTTPS through your reverse proxy when enabling login over an untrusted network.</p>
           </div>
         </div>

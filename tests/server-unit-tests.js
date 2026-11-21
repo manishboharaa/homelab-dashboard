@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { mapNextcloudInfo, parseDockerPort, probeResponseIsAvailable, serviceCredentialError, safeSettingsBackup } = require("../server");
+const { apiAccess, mapNextcloudInfo, parseDockerPort, probeResponseIsAvailable, serviceCredentialError, safeSettingsBackup } = require("../server");
 
 function testDockerPortParsing() {
   assert.deepStrictEqual(
@@ -25,6 +25,20 @@ testDockerPortParsing();
 assert.strictEqual(probeResponseIsAvailable(302), true, "treats a safe HTTP redirect as reachable");
 assert.strictEqual(probeResponseIsAvailable(307), true, "treats a temporary HTTP redirect as reachable");
 assert.strictEqual(probeResponseIsAvailable(500), false, "treats server errors as unavailable");
+
+const apiAccessCases = [
+  ["pre-setup config is readable", { path: "/config", setupComplete: false, authEnabled: false, authenticated: false }, "allow"],
+  ["pre-setup login is allowed", { path: "/login", setupComplete: false, authEnabled: false, authenticated: false }, "allow"],
+  ["pre-setup setup is allowed", { path: "/setup", setupComplete: false, authEnabled: false, authenticated: false }, "allow"],
+  ["pre-setup APIs are gated", { path: "/system", setupComplete: false, authEnabled: false, authenticated: false }, "setup-required"],
+  ["post-setup setup is rejected", { path: "/setup", setupComplete: true, authEnabled: true, authenticated: true }, "conflict"],
+  ["post-setup auth is enforced", { path: "/system", setupComplete: true, authEnabled: true, authenticated: false }, "auth-required"],
+  ["post-setup authenticated access is allowed", { path: "/system", setupComplete: true, authEnabled: true, authenticated: true }, "allow"],
+  ["post-setup open API stays open", { path: "/system", setupComplete: true, authEnabled: false, authenticated: false }, "allow"]
+];
+for (const [name, input, expected] of apiAccessCases) {
+  assert.strictEqual(apiAccess(input), expected, name);
+}
 
 assert.deepStrictEqual(
   mapNextcloudInfo({
@@ -66,4 +80,4 @@ assert.strictEqual(backup.services[0].widgetConfig.password, undefined, "backup 
 assert.strictEqual(backup.pihole.apiKey, undefined, "backup excludes Pi-hole key");
 assert.strictEqual(backup.adguard.password, undefined, "backup excludes AdGuard password");
 assert.strictEqual(backup.proxmox.tokenSecret, undefined, "backup excludes Proxmox secret");
-console.log("12 server unit tests passed");
+console.log("20 server unit tests passed");

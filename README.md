@@ -188,10 +188,15 @@ The first time you open the dashboard, a setup wizard walks you through:
    the dashboard.
 6. **Host type** — pick **Standalone / Docker host** (the default — this
    dashboard runs as a standalone service) or **Proxmox host** to connect
-   your Proxmox VE server and show all VMs/containers on the dashboard.
+   your Proxmox VE server and show all VMs/containers on the dashboard. You
+   must also choose a dashboard username and password here — login
+   protection is required for first-run setup and cannot be skipped.
 
-You only see this once. After that, the dashboard loads straight to the
-main view, and everything from the wizard is editable from Settings.
+You only see this once. Until setup finishes, the server refuses every API
+request except the setup, config, and login endpoints, so a fresh install on
+your LAN cannot be reconfigured by anyone else. After that, the dashboard
+loads straight to the login screen, and everything from the wizard is
+editable from Settings.
 
 ## Using the dashboard
 
@@ -228,7 +233,7 @@ here's what each piece maps to under the hood:
 | Service widget credentials | Settings → Services → select a service integration | Credentials and visible metrics are saved with the service |
 | Custom API endpoint and metrics | Settings → Services → Service widget → Custom API | See [Custom API services](#custom-api-services) |
 | Stats shown in the first row | Settings → System Info | Pick up to 6 of the 10 stats for the collapsed first row; the rest appear behind "Show all" |
-| Dashboard login | Wizard step 6, or Settings → Security | Optional login protection; credentials are stored as a scrypt hash and dashboard API responses redact integration secrets |
+| Dashboard login | Wizard step 6, or Settings → Security | Required during first-run setup; credentials are stored as a scrypt hash, dashboard API responses redact integration secrets, and all API routes except setup/config stay blocked until setup finishes |
 | Timezone | `docker-compose.yml` → `TZ` | Set before first build, see below |
 | Primary disk path | `docker-compose.yml` → `HOST_DISK_PATH` | Defaults to `/hostfs`, see below |
 | Docker ports | `docker-compose.yml` Docker socket mount | The dashboard reads Docker metadata read-only to show containers, status, images, IDs, and published ports |
@@ -604,9 +609,9 @@ failure just hides the panel — it won't affect the rest of the dashboard.
 Open ⚙️ **Settings** and choose the visible **Security** tab. On smaller
 screens, the Settings tabs wrap onto additional rows so every tab remains
 accessible without a horizontal scrollbar. Enable login protection, enter a username and a password of at
-least 8 characters, then click **Save**. The same option appears in setup
-wizard step 6. Use HTTPS through a reverse proxy when login protection is
-enabled.
+least 8 characters, then click **Save**. Login protection is always enabled
+during setup wizard step 6 — it cannot be skipped. Use HTTPS through a
+reverse proxy before exposing the dashboard beyond your trusted LAN.
 
 **Proxmox panel shows zeros / no guests**
 On PVE 8.1+, a token only has the permissions explicitly granted to it (it
