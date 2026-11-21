@@ -1221,7 +1221,7 @@ function makeServiceTile(svc) {
 
   attachResize(tile, svc);
   renderTileInfo(tile, svc);
-  checkStatus(tile.querySelector(".status-dot"), svc.url, document.getElementById(`ping-${svc.id}`), false, svc.id);
+  checkStatus(tile.querySelector(".status-dot"), svc.url, tile.querySelector(".service-ping"), false, svc.id);
   if (!serviceInfoCache.has(svc.id)) {
     fetchServiceInfo(svc, sizeSpan(svc.size)).then(() => renderTileInfo(tile, svc, sizeSpan(svc.size)));
   }
@@ -1689,6 +1689,13 @@ function renderSimpleApiInfo(d, key, title, cells, errorName) {
   return `<section class="svc-widget-section"><div class="svc-widget-section-title">${escapeHtml(title)}</div><div class="svc-info-grid">${cells.filter((cell) => widgetFieldEnabled(d.widgetFields, cell.key)).map((cell) => svcCell(cell.label, cell.value)).join("")}</div></section>`;
 }
 
+function statusLine(res) {
+  if (!res) return `<span class="svc-check">checking…</span>`;
+  if (res.ok) return `<span class="svc-up">UP${res.uptimeSec != null ? " " + escapeHtml(fmtUp(res.uptimeSec)) : ""}</span>`;
+  if (res.source === "docker" && res.state && res.state !== "running") return `<span class="svc-down">${escapeHtml(res.state)}</span>`;
+  return `<span class="svc-down">down</span>`;
+}
+
 function renderTileInfo(tile, svc, span) {
   const more = tile.querySelector(".service-more");
   if (!more) return;
@@ -1696,17 +1703,11 @@ function renderTileInfo(tile, svc, span) {
   const n = levelFor(sp, rowCount(tile.dataset.rows));
   const cached = serviceInfoCache.get(svc.id);
   const d = cached ? cached.data : null;
+  const status = statusCache.get(svc.id) || (d ? {
+    ok: d.up === true, uptimeSec: d.uptimeSec, state: d.state, source: d.source
+  } : null);
+  const upLine = statusLine(status);
 
-  let upLine = `<span class="svc-check">checking…</span>`;
-  if (d) {
-    if (d.up && d.uptimeSec != null) {
-      upLine = `<span class="svc-up">UP ${escapeHtml(fmtUp(d.uptimeSec))}</span>`;
-    } else if (d.source === "docker" && d.state && d.state !== "running") {
-      upLine = `<span class="svc-down">${escapeHtml(d.state)}</span>`;
-    } else {
-      upLine = `<span class="svc-down">down</span>`;
-    }
-  }
   const uptimeInline = tile.querySelector(".service-uptime-inline");
   if (uptimeInline) uptimeInline.innerHTML = upLine;
   const pingEl = more.querySelector(".service-ping");
@@ -1744,7 +1745,7 @@ function renderTileInfo(tile, svc, span) {
     ])}</div>`;
   }
   if (svc.type === "emby" && svc.details) {
-    html += `<div class="service-info">${renderJellyfinInfo({ ...d, jellyfin: d.emby }, n, svc.widgetFields)}</div>`;
+    html += `<div class="service-info">${renderJellyfinInfo({ ...(d || {}), jellyfin: d?.emby }, n, svc.widgetFields)}</div>`;
   }
   if (svc.type === "overseerr" && svc.details) {
     const ov = d?.overseerr || {};
@@ -1870,47 +1871,50 @@ function applyStatus(dotEl, url, pingEl, res) {
   }
 }
 
-function isProxmoxService(svc) {
-  const name = String(svc?.name || "").trim().toLowerCase();
-  return name === "proxmox" || /:\d*8006(?:\/|$)/i.test(String(svc?.url || ""));
-}
-
 function checkStatus(dotEl, url, pingEl, force, serviceId) {
-  const svc = serviceId ? CONFIG.services.find((item) => item.id === serviceId) : null;
-  const proxy = isProxmoxService(svc);
-  const key = proxy ? `backend:${serviceId}` : String(url || "").trim().toLowerCase();
-  if (!url) {
+  if (!serviceId) {
     applyStatus(dotEl, url, pingEl, { ok: false, ms: null, error: "no-url" });
     return;
   }
+  const key = String(serviceId);
+  const svc = CONFIG.services.find((item) => item.id === serviceId);
+  const tile = dotEl && dotEl.closest ? dotEl.closest(".service-tile") : null;
+  const livePing = () => (tile && tile.querySelector(".service-ping")) || pingEl;
   const cached = statusCache.get(key);
   if (cached) {
-    applyStatus(dotEl, url, pingEl, cached);
+    applyStatus(dotEl, url, livePing(), cached);
     if (!force && Date.now() - cached.at < 20000) return;
   }
-  const target = proxy
-    ? `/api/services/${encodeURIComponent(serviceId)}/info?statusOnly=1`
-    : (/^https?:\/\//i.test(url) ? url : `http://${url}`);
   const controller = new AbortController();
   const requestId = (statusRequestSeq.get(dotEl) || 0) + 1;
   statusRequestSeq.set(dotEl, requestId);
-  const timeout = setTimeout(() => controller.abort(), 3000);
-  const start = performance.now();
-  return fetch(target, proxy ? { signal: controller.signal } : { mode: "no-cors", signal: controller.signal })
-    .then((response) => proxy ? response.json() : null)
-    .then((data) => {
-      const res = proxy
-        ? { ok: !!data.up, ms: data.ms ?? null, at: Date.now() }
-        : { ok: true, ms: Math.round(performance.now() - start), at: Date.now() };
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  const publish = (res) => {
+    statusCache.set(key, res);
+    applyStatus(dotEl, url, livePing(), res);
+    if (tile && svc) renderTileInfo(tile, svc);
+  };
+  return fetch(`/api/services/${encodeURIComponent(serviceId)}/info?statusOnly=1`, { signal: controller.signal })
+    .then(async (response) => {
+      if (!response.ok) throw new Error("status request failed");
+      const data = await response.json();
+      return {
+        ok: data.up === true,
+        uptimeSec: data.uptimeSec,
+        state: data.state,
+        source: data.source,
+        ms: data.ms ?? null,
+        at: Date.now()
+      };
+    })
+    .then((res) => {
       if (statusRequestSeq.get(dotEl) !== requestId) return;
-      statusCache.set(key, res);
-      applyStatus(dotEl, url, pingEl, res);
+      publish(res);
     })
     .catch(() => {
       const res = { ok: false, ms: null, at: Date.now() };
       if (statusRequestSeq.get(dotEl) !== requestId) return;
-      statusCache.set(key, res);
-      applyStatus(dotEl, url, pingEl, res);
+      publish(res);
     })
     .finally(() => clearTimeout(timeout));
 }

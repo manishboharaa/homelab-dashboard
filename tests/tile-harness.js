@@ -85,7 +85,7 @@ function fetchStub(url, opts) {
   } else if (url === "/api/ports") {
     payload = [];
   } else if (/\/api\/services\/[^/]+\/info/.test(url)) {
-    payload = { up: true, uptimeSec: 123, source: "ping" };
+    payload = sandbox.__infoPayload || { up: true, uptimeSec: 123, source: "ping" };
   } else if (url.startsWith("/api/services/") && url.split("/").length === 4) {
     payload = { ...(body || {}) };
   }
@@ -118,7 +118,8 @@ const sandbox = {
   setInterval: () => 1,
   clearInterval: () => {},
   console,
-  Date
+  Date,
+  __infoPayload: null
 };
 sandbox.window = sandbox;
 vm.createContext(sandbox);

@@ -301,6 +301,43 @@ globalThis.__async = (async () => {
   assert(moreG.innerHTML.includes("service-uptime"), "vertical-only drag re-renders: uptime line shown mid-drag");
   assert(!moreG.innerHTML.includes("service-info"), "vertical-only drag re-renders: no expanded info for generic");
   hg.dispatch("pointerup", { preventDefault() {}, stopPropagation() {} });
+
+  // Status dot and UP/down text must derive from the same backend record.
+  const qb = { id: "qb1", name: "qBittorrent", url: "https://qbit.example/", icon: null, category: "Downloads", size: "sm", docker: "", type: "qbittorrent", details: false, apiKey: "" };
+  CONFIG.services.push(qb);
+  serviceInfoCache.set(qb.id, { data: { source: "ping", up: true, uptimeSec: 999 }, at: Date.now(), level: 1 });
+  globalThis.__infoPayload = { up: false, uptimeSec: 0, source: "ping" };
+  const tileQb = makeServiceTile(qb);
+  const dotQb = tileQb.querySelector(".status-dot");
+  dotQb.closest = () => tileQb;
+  const pingQb = tileQb.querySelector(".service-ping");
+  const statusBefore = fetchCalls.length;
+  checkStatus(dotQb, qb.url, pingQb, true, qb.id);
+  await __macrotick();
+  assert(dotQb.classList.contains("offline") && !dotQb.classList.contains("online"), "backend down -> dot offline");
+  assert(tileQb.querySelector(".service-more").innerHTML.includes("svc-down"), "backend down -> text down even when info cache says UP");
+  assert(tileQb.querySelector(".service-uptime-inline").innerHTML.includes("svc-down"), "backend down -> inline text down");
+  assert(tileQb.querySelector(".service-ping").classList.contains("offline"), "ping node offline after re-render");
+  const statusCall = fetchCalls.find((c, i) => i >= statusBefore && /\/api\/services\/qb1\/info\?statusOnly=1/.test(c.url));
+  assert(!!statusCall, "non-Proxmox service checks status through backend endpoint");
+  assert(!!statusCache.get(qb.id), "status cache is keyed by service id");
+  assert(!statusCache.get(qb.url.toLowerCase()), "status cache is no longer keyed by URL");
+
+  globalThis.__infoPayload = { up: true, uptimeSec: 120, source: "ping" };
+  const tileUp = makeServiceTile(qb);
+  const dotUp = tileUp.querySelector(".status-dot");
+  dotUp.closest = () => tileUp;
+  checkStatus(dotUp, qb.url, tileUp.querySelector(".service-ping"), true, qb.id);
+  await __macrotick();
+  assert(dotUp.classList.contains("online") && !dotUp.classList.contains("offline"), "backend up -> dot online");
+  assert(tileUp.querySelector(".service-more").innerHTML.includes("svc-up"), "backend up -> text UP");
+
+  let tileEmby = null;
+  try {
+    tileEmby = makeServiceTile({ id: "emb1", name: "Emby", url: "http://x", icon: null, category: "Media", size: "sm", docker: "", type: "emby", details: true, apiKey: "" });
+  } catch {}
+  assert(!!tileEmby, "Emby tile renders before service info arrives");
+  globalThis.__infoPayload = null;
 })();
 
 const jfName = document.getElementById("settingsNewName");

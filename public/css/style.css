@@ -687,9 +687,9 @@ input { font-family: inherit; }
 
 .service-more { min-width: 0; display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px 10px; flex: 1 1 auto; }
 .service-wide .service-uptime { display: none; }
-.service-uptime .svc-up { color: var(--success); }
-.service-uptime .svc-down { color: var(--danger); }
-.service-uptime .svc-check { color: var(--text-dim); }
+.service-uptime .svc-up, .service-uptime-inline .svc-up { color: var(--success); }
+.service-uptime .svc-down, .service-uptime-inline .svc-down { color: var(--danger); }
+.service-uptime .svc-check, .service-uptime-inline .svc-check { color: var(--text-dim); }
 .service-uptime span {
   font-family: var(--font-mono);
   font-size: 10px;
