@@ -714,8 +714,9 @@ input { font-family: inherit; }
 }
 .service-ping.online { color: var(--success); }
 .service-ping.offline { color: var(--danger); }
+.service-tile.service-wide .service-ping { font-size: 10.5px; margin-top: 2px; }
 
-.service-more { min-width: 0; display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px 10px; flex: 1 1 auto; }
+.service-more { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; flex: 1 1 auto; }
 .service-wide .service-uptime { display: none; }
 .service-uptime .svc-up, .service-uptime-inline .svc-up { color: var(--success); }
 .service-uptime .svc-down, .service-uptime-inline .svc-down { color: var(--danger); }
@@ -965,16 +966,6 @@ input { font-family: inherit; }
 .settings-backup h3 { margin: 0 0 8px; color: var(--text-muted); font-size: 13px; }
 .settings-backup-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .settings-backup-status { min-height: 18px; margin-top: 8px; color: var(--text-dim); font: 10px var(--font-mono); }
-
-
-.service-ping {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--text-dim);
-  margin-top: 2px;
-}
-.service-ping.online { color: var(--success); }
-.service-ping.offline { color: var(--danger); }
 
 
 .sidebar-col {
