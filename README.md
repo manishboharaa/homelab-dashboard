@@ -1,671 +1,260 @@
 # Home Lab Dashboard
 
-A self-hosted, dark-themed dashboard for your homelab. Add your services
-once through a guided setup wizard, icons are pulled in automatically, and
-you get one page with everything you would normally open separately:
-what's running, whether it's up, how the host is doing, what's listening on
-which port, the weather, and the latest tech news.
+A single page for your homelab. It tells you what's up, how the host is
+doing, what ports are listening, what the weather's like, and what's in the
+tech news. I got tired of keeping eight tabs open just to answer "is
+everything still running?", so this is the other way round: one tab,
+everything in it.
 
-No account, no cloud dependency, no API keys required to get started.
+Runs on your own box. No account, no cloud, no config file to fill in before
+you start.
 
 ## Contents
 
-- [Features](#features)
-- [Requirements](#requirements)
-- [Get the code](#get-the-code)
+- [What you get](#what-you-get)
 - [Run it](#run-it)
-- [First-run setup](#first-run-setup)
-- [Using the dashboard](#using-the-dashboard)
+- [First run](#first-run)
+- [What's on the page](#whats-on-the-page)
 - [Configuration](#configuration)
-- [Host networking (why, and how to opt out)](#host-networking-why-and-how-to-opt-out)
-- [Optional: Docker container count](#optional-docker-container-count)
-- [DNS blocking stats (Pi-hole or AdGuard Home)](#dns-blocking-stats-pi-hole-or-adguard-home)
-- [Proxmox VE guests](#proxmox-ve-guests)
-- [Nginx Proxy Manager](#nginx-proxy-manager)
-- [Service integrations](#service-integrations)
-- [Custom API services](#custom-api-services)
-- [Editing settings after setup](#editing-settings-after-setup)
-- [Manually editing config.json](#manually-editing-configjson)
+- [Security stuff worth knowing](#security-stuff-worth-knowing)
+- [The bits people usually ask about](#the-bits-people-usually-ask-about)
+- [If something looks off](#if-something-looks-off)
 - [Updating](#updating)
-- [Troubleshooting](#troubleshooting)
-- [Tech stack](#tech-stack)
-- [Project structure](#project-structure)
+- [The tech bits](#the-tech-bits)
 - [License](#license)
 
-## Features
+## What you get
 
-- **Services grid** — every service you add shows up as a tile with its
-  logo, category, an online/offline status dot, and a live response time
-  (e.g. `42 ms`). Statuses are checked in the background every 15 seconds
-  and the last known result is kept on screen between checks, so nothing
-  flashes back to "checking…". Drag a tile to reorder the grid, or drag it
-  onto another category to move it there — both are saved. An **+ Add
-  service** button in the section header jumps straight to Settings →
-  Services.
-- **Proxmox VE guests** — connect a Proxmox host with a read-only API token
-  and the dashboard lists every VM and LXC container in the cluster: nodes,
-  running/total VMs and containers, live CPU + memory, and status dots.
-  Expand any running guest for its **IP address(es), disk usage, network
-  I/O, and uptime** — all read-only, nothing runs inside your containers.
-- **Automatic icons** — pick a service from the built-in catalog (Plex,
-  Sonarr, Pi-hole, Home Assistant, Portainer, Nextcloud, Grafana, and
-  more) and its icon is pulled in for you. Adding from Settings shows
-  **icon + name suggestions** as you type, so you can pick a known app and
-  get its icon and category for free. Add something custom and the app
-  still resolves an icon automatically, favicon-style, no uploading.
-- **Live system stats** — CPU load, memory, swap, disk usage, CPU
-  temperature, load average, network throughput, uptime, local IP, and
-  (optionally) running Docker container count. The first row shows your
-  6 chosen stats; click **Show all** to expand the rest. Choose which 6
-  from Settings → System Info.
-- **Open ports table** — every listening port on the host, with protocol,
-  process name, and PID, searchable.
-- **DNS blocking stats** — queries today, percent blocked, blocklist size,
-  and an always-visible 24-hour queries/blocked graph, plus Top Clients /
-  Top Blocked / Top Allowed lists behind a toggle, for **Pi-hole** *or*
-  **AdGuard Home**, with either (or both) connected from the wizard or
-  Settings.
-- **Sidebar** — instant service search, current weather for a location you
-  set (no API key — powered by [Open-Meteo](https://open-meteo.com/); °F for
-  US locations, °C everywhere else, chosen automatically; includes a 7-day
-  forecast), and a tech news RSS feed with sensible defaults you can replace.
-- **Everything editable later** — the ⚙️ settings panel lets you add, edit
-  (name, **IP/port/URL**, category), or remove services, change your name,
-  move your weather location, edit RSS feeds, and connect/disconnect
-  Pi-hole without touching a config file. Changes are staged per tab — hit
-  the **Save** button at the top of Settings and the dashboard updates
-  instantly, no reload needed.
-- **Resizable service tiles** — drag the bottom-right corner of any tile to
-  resize it freely: wider and/or taller. Tiles automatically cap their
-  size once all available info is displayed — no empty stretching. The
-  more space a tile has, the more info it shows: uptime from 2 columns,
-  source/checked time from 2 (non-API services), detail panels from 3+.
-  Sizes are saved per service.
-- **Per-service uptime** — tiles show uptime in days/hours/minutes. Set a
-  **Docker container name** in Settings and (with the socket mounted, below)
-  a tile shows the container's *real* uptime; otherwise the dashboard
-  observes reachability itself (local probes every 5 min, remote every 30
-  min) and remembers it across restarts.
-- **Jellyfin detail panel** — wide Jellyfin tiles show movies, series,
-  episodes, active streams, libraries, users, and server version/OS. An
-  optional API key in Settings unlocks the full counters (public info works
-  without one).
-- **Nginx Proxy Manager panel** — connect with your NPM login email and
-  password and the tile shows proxy host counts, streams, certificates,
-  dead hosts, and the last audit log action. Info appears progressively as
-  the tile gets wider/taller. Credentials are entered in Settings →
-  Services (email + password fields appear automatically for nginx
-   services).
-- **Service integrations** — connect common homelab apps to show useful live
-  metrics inside their tiles: Jellyfin, Emby, Plex, Immich, Nginx Proxy
-  Manager, Nextcloud, Sonarr, Radarr, Lidarr, Prowlarr, qBittorrent,
-  Overseerr, and Portainer.
-- **Custom API services** — connect an app that does not have a built-in
-  integration by entering an endpoint, optional authentication header, and
-  JSON paths for the metrics you want to display.
-- **Dark, sleek UI** — no build step, no framework, just HTML/CSS/JS
-  served by a small Express app, so the Docker image stays small and easy
-  to hack on.
-
-## Requirements
-
-- A machine that can run Node.js or Docker (a NAS, mini PC, Raspberry Pi,
-  VM — most homelab setups already have this)
-- For the Docker route: [Docker](https://docs.docker.com/get-docker/) and
-  [Docker Compose](https://docs.docker.com/compose/install/)
-- For the bare-metal route: [Node.js](https://nodejs.org/) 18 or newer
-- Linux host recommended. Some system stats (temperature, listening ports)
-  rely on host mounts that behave best on Linux.
-
-## Get the code
-
-Two ways to get the project onto your machine — pick whichever you prefer.
-
-**Option 1 — clone with git**
-
-```bash
-git clone https://github.com/manishboharaa/homelab-dashboard.git
-cd homelab-dashboard
-```
-
-> If you cloned from a fork, use your own fork's URL instead.
-
-**Option 2 — download the ZIP**
-
-On the repository page on GitHub, click the green **Code** button and choose
-**Download ZIP**. Unzip the archive and open a terminal in the resulting
-`homelab-dashboard` folder. No git required.
-
-Both ways give you the same files. Continue to [Run it](#run-it).
+- **Service tiles.** Logo, category, a status dot, and the last measured
+  response time. The server does the probing; the page picks up the result
+  every 15 seconds. The dot and the "UP / down" text read from that same
+  result, so they can't contradict each other. The last known result stays
+  on screen between checks instead of flashing "checking…".
+- **Host stats.** CPU, memory, swap, disk, temperature, load average,
+  network, uptime, local IP. Your six favourites sit on the first row; the
+  rest live behind **Show all**.
+- **Open Ports.** Everything listening on the host, with protocol, process
+  name, and PID, plus a filter box.
+- **Uptime per service.** Set a Docker container name and the tile reads
+  that container's real uptime. Otherwise the dashboard watches
+  reachability itself — every 5 minutes locally, 30 for remote services —
+  and remembers across restarts.
+- **Sidebar.** Service search, weather from Open-Meteo (no API key, °F for
+  US locations and °C elsewhere, seven-day forecast), and a tech news feed
+  with defaults you can replace.
+- **Icons.** dashboard-icons first, then a favicon lookup, then a letter
+  avatar. Settings suggests icon and name pairs as you type.
+- **Drag and resize.** Reorder tiles, move them between categories, and
+  stretch them. Sizes and positions stick.
+- **Detail panels.** More space means more info: uptime from two columns,
+  source and checked time from two for non-API services, widget panels from
+  three up. Pick which metrics to show in Settings.
+- **DNS blocking stats.** Queries, blocks, blocklist size, and a 24-hour
+  graph for Pi-hole or AdGuard Home.
 
 ## Run it
 
-Choose the method that fits your setup: run directly with Node.js, or build
-with Docker from the source you just got.
+With Docker (the usual route):
 
-### Method 1 — run with Node.js (no Docker)
+```bash
+docker compose up -d --build
+```
+
+Open `http://YOUR_SERVER_IP:8080`. The compose file builds the image from
+the included Dockerfile, so there's nothing to set up first.
+
+Or without Docker, on Node.js 18 or newer:
 
 ```bash
 npm install
 npm start
 ```
 
-Then open **`http://localhost:8080`** (or `http://YOUR_SERVER_IP:8080` if
-you're on another machine on your network). The server writes its config to
-`./data/config.json` next to the app.
+Same address. Config ends up in `./data/config.json`. If you cloned from a
+fork, use your own URL instead of the one above. Linux is the happiest host
+for the temperature and ports panels.
 
-### Method 2 — build and run with Docker (default)
+## First run
 
-The included `docker-compose.yml` builds the image from the `Dockerfile`,
-so no extra configuration is needed:
+The wizard walks through:
 
-```bash
-docker compose up -d --build
-```
-
-Then visit **`http://YOUR_SERVER_IP:8080`**. Rebuilding takes a minute or
-two the first time.
-
-That's it — no `.env` file to fill in first, no API keys. Everything else
-happens in the browser on first load.
-
-## First-run setup
-
-The first time you open the dashboard, a setup wizard walks you through:
-
-1. **Your name** — used for the greeting on the dashboard ("Good evening,
-   Alex").
-2. **Services** — pick from a curated catalog of popular self-hosted apps,
-   or click **"+ Add your own service"** for anything not listed. Icons
-   are resolved automatically as you go.
-3. **Weather location** — search-as-you-type city lookup, no API key.
-   Temperatures show in **°C** or **°F** automatically based on the
-   location you pick (US locations → °F, everywhere else → °C).
-4. **Tech news feeds** — pre-filled with a few solid tech RSS feeds; edit
-   the list or leave the defaults.
-5. **DNS blocking stats (optional)** — enter your Pi-hole URL + API key,
-   or your AdGuard Home URL + admin credentials, to show blocking stats on
-   the dashboard.
-6. **Host type** — pick **Standalone / Docker host** (the default — this
-   dashboard runs as a standalone service) or **Proxmox host** to connect
-   your Proxmox VE server and show all VMs/containers on the dashboard. You
-   must also choose a dashboard username and password here — login
-   protection is required for first-run setup and cannot be skipped.
+1. **Your name** — used for the greeting.
+2. **Services** — pick from the catalog or add your own.
+3. **Weather location** — search by city name.
+4. **Tech news feeds** — a few defaults are pre-filled.
+5. **DNS blocking stats (optional)** — Pi-hole or AdGuard Home details.
+6. **Host type** — standalone or Proxmox. You also set a username and
+   password here. Login is required during setup; it can't be skipped.
 
 You only see this once. Until setup finishes, the server refuses every API
-request except the setup, config, and login endpoints, so a fresh install on
-your LAN cannot be reconfigured by anyone else. After that, the dashboard
-loads straight to the login screen, and everything from the wizard is
-editable from Settings.
+call except setup, config, and login, so nobody else on the LAN can poke at
+a half-finished install. Afterwards it opens on the login screen, and
+everything from the wizard stays editable in ⚙️ Settings.
 
-## Using the dashboard
+## What's on the page
 
 | Area | What it shows |
 |---|---|
-| Top bar | Personalized greeting, live clock/date, settings (⚙️) |
-| Stats strip | First row shows your 6 chosen stats; click **Show all** to expand the full set: CPU, memory, swap, disk, temp, load average, network, uptime, local IP, Docker containers |
-| DNS stats | Status, queries today, blocked today, blocked %, blocklist size + a 24h graph (always visible); click the **▾** arrow for Top Clients / Top Blocked / Top Allowed, which scroll inside the panel — for Pi-hole and/or AdGuard Home (only shown if configured) |
-| Proxmox | Nodes, VMs/CTs running, total guests + a collapsible list of every VM/LXC. Click a guest's **▸** for its IP address(es), disk usage, network I/O, and uptime (only shown if configured) |
-| Nginx Proxy Manager | Proxy hosts, streams, certs, dead hosts, last audit action — info grows as the tile expands (only shown if configured with email + password) |
-| Service integrations | Built-in metrics for Jellyfin, Emby, Plex, Immich, Nginx Proxy Manager, Nextcloud, Sonarr, Radarr, Lidarr, Prowlarr, qBittorrent, Overseerr, and Portainer |
-| Custom API service | User-defined metrics read from a JSON endpoint |
-| Services grid | Your added services — click a tile to open it in a new tab; **drag** a tile to reorder the grid or move it to another category. **+ Add service** opens Settings → Services |
-| Open Ports | **System** tab shows host listening ports with process name and PID; **Docker** tab shows containers, status, image, IDs, and published host → container port mappings |
-| Sidebar → Search | Instantly filters the services grid as you type |
-| Sidebar → Weather | Current temp, condition, today's high/low, feels-like, humidity, wind + 7-day forecast |
-| Sidebar → Tech News | Latest items from your configured RSS feeds |
+| Top bar | Greeting, live clock, Settings (⚙️) |
+| Stats strip | Your six chosen stats, with **Show all** for the full set |
+| Services grid | Your tiles. Click to open a service, drag to reorder or move category, **+ Add service** to add one |
+| Open Ports | **System** tab for host listeners with PID; **Docker** tab for containers, images, IDs, and published ports |
+| DNS stats | Status, queries and blocks today, blocked %, blocklist size, 24h graph; **▾** opens Top Clients / Top Blocked / Top Allowed |
+| Proxmox | Nodes, guest counts, and a collapsible VM/LXC list with live CPU and memory |
+| Integrations | Live metrics inside service tiles |
+| Sidebar | Search, weather with seven-day forecast, tech news |
 
 ## Configuration
 
-Most settings are managed from the UI (setup wizard + ⚙️ Settings), but
-here's what each piece maps to under the hood:
+Most of this happens in the wizard or in Settings. The table is just a map
+between the two:
 
-| Setting | Where to set it | Notes |
+| Setting | Where | Notes |
 |---|---|---|
-| Services (name, URL, icon, category) | Wizard step 2, or Settings → Services | Add from Settings shows icon + name suggestions; every service is editable in place (name, IP/port, category) — one **Save** at the top of Settings saves every tab |
-| Your name | Wizard step 1, or Settings → Profile | Used only for the greeting |
-| Weather location | Wizard step 3, or Settings → Weather | Search by city name; °F/°C auto-detected from the location |
-| RSS feeds | Wizard step 4, or Settings → News Feeds | Any standard RSS/Atom feed URL |
-| Pi-hole URL + API key | Wizard step 5, or Settings → Pi-hole | See [DNS blocking stats](#dns-blocking-stats-pi-hole-or-adguard-home) |
-| AdGuard Home URL + credentials | Wizard step 5, or Settings → AdGuard | See [DNS blocking stats](#dns-blocking-stats-pi-hole-or-adguard-home) |
-| Proxmox URL + API token | Wizard step 6 (Host type), or Settings → Proxmox | See [Proxmox VE guests](#proxmox-ve-guests) |
-| NPM login email + password | Settings → Services (nginx service row) | See [Nginx Proxy Manager](#nginx-proxy-manager) |
-| Service widget credentials | Settings → Services → select a service integration | Credentials and visible metrics are saved with the service |
-| Custom API endpoint and metrics | Settings → Services → Service widget → Custom API | See [Custom API services](#custom-api-services) |
-| Stats shown in the first row | Settings → System Info | Pick up to 6 of the 10 stats for the collapsed first row; the rest appear behind "Show all" |
-| Dashboard login | Wizard step 6, or Settings → Security | Required during first-run setup; credentials are stored as a scrypt hash, dashboard API responses redact integration secrets, and all API routes except setup/config stay blocked until setup finishes |
-| Timezone | `docker-compose.yml` → `TZ` | Set before first build, see below |
-| Primary disk path | `docker-compose.yml` → `HOST_DISK_PATH` | Defaults to `/hostfs`, see below |
-| Docker ports | `docker-compose.yml` Docker socket mount | The dashboard reads Docker metadata read-only to show containers, status, images, IDs, and published ports |
+| Services | Wizard step 2, Settings → Services | Name, URL, icon, category. One **Save** covers every tab |
+| Your name | Wizard step 1, Settings → Profile | Greeting only |
+| Weather location | Wizard step 3, Settings → Weather | °F/°C picked from the location |
+| RSS feeds | Wizard step 4, Settings → News Feeds | Any RSS/Atom URL |
+| Pi-hole / AdGuard | Wizard step 5, Settings → Pi-hole / AdGuard | URL, token or credentials |
+| Proxmox | Wizard step 6, Settings → Proxmox | URL and read-only API token |
+| Login | Wizard step 6, Settings → Security | Required at setup; scrypt hash |
+| Stats in first row | Settings → System Info | Pick up to six of ten |
+| Timezone | `docker-compose.yml` → `TZ` | Set before the first build |
+| Disk path | `docker-compose.yml` → `HOST_DISK_PATH` | Defaults to `/hostfs` |
 
-### TLS verification for self-signed integrations
+Everything persists to `./data/config.json`, bind-mounted into the
+container. Back it up if you want to move the dashboard, edit it by hand if
+you prefer (then `docker compose restart`), or delete it to start the
+wizard over.
 
-HTTPS certificate verification is enabled by default. For a self-signed
-integration, prefer mounting its CA certificate and setting `TLS_CA_FILE` in
-the container environment. `ALLOW_INSECURE_TLS=true` is available only as an
-explicit fallback for trusted private networks.
+### TLS, outbound URLs, time
 
-### Outbound URL safety
+HTTPS certificates are checked by default. For a self-signed integration,
+mount its CA certificate and set `TLS_CA_FILE`. `ALLOW_INSECURE_TLS=true` is
+the blunt fallback for a trusted private network.
 
-Service, feed, and integration URLs are fetched by the server. Loopback,
-link-local, CGNAT (`100.64.0.0/10`), IPv6 unique-local/link-local, multicast,
-and cloud-metadata addresses are rejected — including IPv4-mapped IPv6
-spellings such as `http://[::ffff:127.0.0.1]/`. Each request connects only
-to the IP address validated for its hostname, and redirects are not followed.
-Private LAN ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) remain
-allowed so homelab services keep working.
+Outbound URLs are checked before the server fetches them. Loopback,
+metadata, link-local, CGNAT (`100.64.0.0/10`), IPv6 unique-local and
+multicast addresses are blocked, including IPv4-mapped IPv6 spellings like
+`http://[::ffff:127.0.0.1]/`. DNS answers are pinned to the address that
+was checked, and redirects aren't followed. Private LAN ranges stay
+allowed — that's the whole point for a homelab.
 
-### Changing the timezone
-
-Edit `TZ` in `docker-compose.yml` to your
+`TZ` in `docker-compose.yml` is an
 [IANA timezone name](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)
-(e.g. `Europe/London`, `Asia/Kolkata`, `America/New_York`) before your
-first `docker compose up`. If you run with Node.js directly, set the
-`TZ` environment variable the same way.
+like `Europe/London` or `Asia/Kolkata`.
 
-## Host networking (why, and how to opt out)
+## Security stuff worth knowing
 
-`docker-compose.yml` runs the container with `network_mode: host` and
-`pid: host`. This is what lets the **Open Ports** panel and **Network**
-stat reflect your actual host machine instead of just the container's own
-isolated network stack — the same approach tools like Netdata use. With
-host networking there's no `ports:` mapping; the app binds directly to
-`$PORT` (`8080` by default) on the host itself.
+Login is required at setup, passwords are stored as scrypt hashes, and
+integration secrets are stripped out of API responses.
 
-The container runs as a non-root user (`UID:GID`, default `1000:1000`) with all
-Linux capabilities dropped and `no-new-privileges` enabled. The host mounts
-below still expose host files and the Docker socket to the app, so only run
-this on a network you trust. To use a different host user, set `UID` and `GID`
-in your shell before `docker compose up`; for the Docker socket, set
-`DOCKER_GID` to your host's `docker` group id
-(`getent group docker | cut -d: -f3`).
+The container runs as a non-root user (`UID:GID`, default `1000:1000`) with
+all capabilities dropped and `no-new-privileges` on. It also uses host
+networking (`network_mode: host`, `pid: host`) so the ports table and
+network stat see the real host, and it mounts `/` read-only for disk usage.
+That's a fair bit of host visibility, so keep this on a network you trust.
 
-If you'd rather not use host networking (e.g. you want stricter container
-isolation), remove `network_mode: host` from `docker-compose.yml` and add
-back:
+The Docker socket mount is read-only at the file level only. Anything
+running in this container can still talk to the Docker API and create a
+privileged container, which is root on the host. Take the mount out if you
+don't need container stats. To change the host user, set `UID` and `GID`
+before starting; for the socket, set `DOCKER_GID` to your host's `docker`
+group id.
+
+Want tighter isolation? Drop `network_mode: host` and add a port mapping:
 
 ```yaml
 ports:
   - "8080:8080"
 ```
 
-Everything else keeps working — you'll just lose accurate host-level data
-in the Open Ports panel and network throughput stat, since the container
-will only see its own network stack.
+Everything else keeps working. You just lose host-level accuracy in the
+ports table and network throughput stat.
 
-## Optional: Docker container count
+## The bits people usually ask about
 
-To show a running/total container count on the stats strip, add this
-volume mount to the `volumes:` block of `docker-compose.yml`:
+**Services.** Add them in the wizard or with **+ Add service** in the
+Services header. Click a tile to open the service in a new tab, drag it to
+reorder, or drop it on another category. Settings shows icon and name
+suggestions as you type.
 
-```yaml
-- /var/run/docker.sock:/var/run/docker.sock:ro
-```
+**Proxmox.** A read-only API token gets you nodes, guest counts, and a list
+of VMs and containers with live CPU and memory. Expand a guest for its IP
+address, disk usage, network I/O, and uptime. On PVE 8.1+ the token needs
+the **PVEAuditor** role granted to the token itself at `/` with
+**Propagate** ticked — tokens there don't inherit their user's rights.
+QEMU VMs need the guest agent for IPs; LXCs report their own.
 
-This grants the container **read-only** access to your Docker daemon. Read-only
-here only blocks writes to the socket file itself: the Docker API can still
-create privileged containers, so anyone who can execute code in this container
-effectively has root on the host. The included compose file enables this mount;
-the non-root user, dropped capabilities, and `no-new-privileges` limit other
-attack paths but do **not** remove that risk. Remove the mount if you don't need
-the Docker/container-uptime tiles.
+**DNS blockers.** Enter the URL with no trailing slash. Pi-hole wants its
+API token, and on v6 you need the legacy `/admin/api.php` API enabled.
+AdGuard Home uses your admin username and password. On GL.iNet routers the
+AGH credentials are switched off, so pick the GL.iNet mode and log in with
+the router's account instead. A widget that can't connect just hides
+itself; it won't break the page.
 
-The same mount powers **per-service uptime**: when you set a service's
-**Docker container name** in Settings, its tile reads the container's real
-uptime. Without the mount (or when the container isn't found), tiles fall back
-to dashboard-observed uptime.
-
-## DNS blocking stats (Pi-hole or AdGuard Home)
-
-The dashboard can show live blocking stats for **one or both** of the two
-most popular network-wide ad blockers. Each widget only appears once you
-connect it (wizard step 5, or ⚙️ Settings → Pi-hole / Settings → AdGuard)
-and stays hidden if it can't connect, so a misconfiguration never breaks
-the rest of the dashboard.
-
-The widgets always show the headline numbers **and** a 24-hour
-queries-vs-blocked graph. Click the **▾** button to expand **Top Clients**
-(blocked counts for Pi-hole), **Top Blocked** domains, and **Top Allowed**
-domains (queried minus blocked) — the lists scroll inside the panel so the
-page stays short. Your expanded/collapsed choice is remembered per widget.
-
-### Pi-hole
-
-1. Open your Pi-hole admin and go to **Settings → API / Web interface**,
-   then click **Show API token** and copy it. (In Pi-hole v6 the API token
-   lives on the same page.)
-2. In the dashboard, enter your Pi-hole **URL** — no trailing slash, e.g.
-   `http://192.168.1.10` — and paste the **API key**, then save.
-3. On Pi-hole **v6**, the legacy `/admin/api.php?summary` endpoint used by
-   this widget must be enabled (v6 ships a legacy API compatibility mode);
-   if it's unavailable the widget simply stays hidden.
-
-The widget shows status, queries today, blocked today, blocked %, and
-blocklist size (blocked counts per client come from Pi-hole's
-`topClientsBlocked`). The 24-hour graph uses Pi-hole's `overTimeData10mins`
-data.
-
-### AdGuard Home
-
-The dashboard supports **two auth modes** (drop-down in wizard step 5 and
-Settings → AdGuard): *Standard* and *GL.iNet router*.
-
-**Standard** (default — normal AdGuard Home installs, Docker, etc.):
-
-1. AdGuard Home's control API authenticates with its admin **username and
-   password** (HTTP Basic auth) — there's no API token to generate.
-2. In the dashboard, enter your AdGuard Home **URL** — no trailing slash,
-   e.g. `http://192.168.1.10:3000` — the **username** (default `admin`) and
-   the **password**, then save.
-3. The widget reads `/control/status`, `/control/stats`, and
-   `/control/filtering/status`. **Queries today** / **Blocked today** are
-   computed from AdGuard's per-hour stats buckets, and the blocklist size
-   is the total number of rules across your enabled filter lists.
-   Top Clients / Top Blocked / Top Allowed come from AdGuard's
-   `top_clients`, `top_blocked_domains`, and `top_queried_domains`;
-   AdGuard doesn't expose blocked-per-client, so clients show request
-   totals only.
-4. AdGuard's counters are cumulative until you click **Reset statistics**
-   in the AdGuard admin, so today's numbers reflect the current day while
-   the blocked percentage is over the whole window since the last reset.
-5. Self-signed HTTPS certificates are accepted; plain HTTP on your LAN
-   works too.
-
-**GL.iNet router** (Brume 2, Flint 2, etc.):
-
-On GL.iNet routers, AdGuard Home runs with the `--glinet` flag, which
-disables AdGuard's own credentials entirely — AGH will reject standard
-Basic-auth logins with `403`. Instead, pick **GL.iNet router** mode and
-enter your **router's** admin username and password (GL.iNet's login is
-`root` by default), with the AdGuard URL pointing at the router's AGH
-instance (e.g. `http://10.10.8.1:3000`). The dashboard then logs in to the
-router's RPC API the same way the router web UI does (unix-crypt challenge
-→ SHA-256, MD5 fallback for older firmware), obtains a session, and uses
-that session's `Admin-Token` cookie to read AGH. Sessions are cached for
-~10 minutes and refreshed automatically. Note: GL.iNet firmware 4.9.0+
-removed the RPC login this relies on, so those versions can't use the
-dashboard's GL.iNet mode.
-
-Both widgets refresh every 30 seconds.
-
-## Proxmox VE guests
-
-If you run VMs or LXC containers on a [Proxmox VE](https://www.proxmox.com/)
-server, connect it and the dashboard shows a **Proxmox** panel with the
-number of nodes, how many VMs and containers are running, total guests, and
-a collapsible list of every guest with its status dot and live CPU/memory.
-Click a running guest's **▸** arrow to expand it and see its **IP
-address(es)**, **disk usage** (used / total + %), **network I/O**, and
-**uptime** — your expanded guests stay open and refresh every 60 seconds.
-
-Refreshes every 60 seconds.
-
-1. In the Proxmox web UI, go to **Datacenter → Permissions → API Tokens**
-   and **Add** a token. Give it a user (e.g. `root@pam` or a dedicated
-   user) and the **Audit** role (read-only is all the dashboard needs) and
-   copy the **Token ID** (looks like `user@pam!tokenid`) and the **Token
-   Secret** shown once. Keep the secret safe — it's the password for the
-   token. A single token covers the whole cluster, so one is enough no
-   matter how many nodes you have.
-2. In the dashboard wizard, choose **Proxmox host** on step 6, then enter
-   your Proxmox server URL — no trailing slash, e.g.
-   `https://192.168.1.20:8006` — the token ID and the token secret, then
-   finish. (You can also connect later via ⚙️ Settings → Proxmox.)
-3. HTTPS certificate verification is enabled. For a self-signed Proxmox
-   certificate, mount the Proxmox CA certificate into the dashboard container
-   and set `TLS_CA_FILE` in `docker-compose.yml`; for a trusted private
-   network only, `ALLOW_INSECURE_TLS=true` is an explicit fallback.
-
-The panel hides itself if it can't connect, so a wrong URL or token never
-breaks the rest of the dashboard.
-
-> **Note for PVE 8.1 and newer:** API tokens no longer inherit the
-> privileges of the user they belong to — a token only has what is granted
-> to the token itself. If the panel shows all zeros (no guests listed),
-> open **Datacenter → Permissions → Add**, pick **API Token**, choose your
-> token, give it the **PVEAuditor** role at path **/** with **Propagate**
-> ticked, and save.
->
-> IP addresses come from PVE's container interface data, so they show for
-> LXC containers reliably (loopback and link-local addresses are hidden).
-
-## Nginx Proxy Manager
-
-If you run [Nginx Proxy Manager](https://nginxproxymanager.com/) and want
-live stats on its tile, connect it with your NPM login credentials. The
-tile progressively shows more info as it gets bigger:
+**Nginx Proxy Manager.** The service name needs to contain "nginx". Put
+the admin email and password in that service's row in Settings and the
+tile shows:
 
 | Info | When it appears |
 |---|---|
 | Active proxy hosts count | Tile ≥ 2 columns wide |
-| Hosts / Streams / Certs cells | Tile ≥ 3 columns or 3 rows |
-| Dead hosts + Last audit action | Tile ≥ 4 columns or 4 rows |
+| Hosts / Streams / Certs | Tile ≥ 3 columns or 3 rows |
+| Dead hosts + last audit action | Tile ≥ 4 columns or 4 rows |
 
-To set it up:
+**Integrations.** Pick one under **Settings → Services → Service widget**.
+The metric checkboxes change to match, so each tile shows only what you
+asked for. Credentials stay on your server and go straight to that
+service — they're never put in the tile's link.
 
-1. In the NPM web UI, go to **Settings → Users** and note the email and
-   password of an admin account.
-2. In the dashboard, go to **⚙️ Settings → Services**, find your nginx
-   proxy manager service (the name must contain "nginx"), and enter the
-   **NPM login email** and **NPM password** in the fields that appear.
-   Hit **Save**.
-3. The tile will immediately show live stats fetched from the NPM API.
-
-> **Note:** The email and password are stored locally in `config.json` and
-> only used to obtain a short-lived JWT token from the NPM API. Tokens
-> are cached for 50 minutes and refreshed automatically.
-> QEMU VMs need the
-> [guest agent](https://pve.proxmox.com/wiki/Qemu-guest-agent) installed to
-> report IPs; without it the IP line shows **—**.
-
-## Service integrations
-
-When adding or editing a service, choose its integration in **⚙️ Settings →
-Services → Service widget**. The dashboard shows the available metric checkboxes
-for that integration, so you can keep each expanded tile focused.
-
-| Integration | Credentials | Metrics |
+| Kind | Examples | What shows |
 |---|---|---|
-| Jellyfin | API key | Movies, series, episodes, active streams, users, now playing, libraries |
-| Immich | API key | Users, photos, videos, storage |
-| Nginx Proxy Manager | Login email + password | Hosts, streams, certificates, dead hosts, last action |
-| Nextcloud | NC-Token, or username + password | Free space, active users, files, shares |
-| Sonarr | API key | Wanted, queued, series |
-| Radarr | API key | Wanted, queued, movies |
-| Lidarr | API key | Wanted, queued, artists |
-| Prowlarr | API key | Indexers |
-| qBittorrent | WebUI username + password | Download/upload speed, seeding, leeching |
-| Emby | API key | Movies, series, episodes, active streams, users, libraries |
-| Plex | API token | Active streams, libraries |
-| Overseerr | API key | Requests |
-| Portainer | API token | Endpoints, stacks |
+| Media | Jellyfin, Emby, Plex, Immich | Counts, streams, libraries, server info |
+| Downloads | qBittorrent | Speeds, seeding, leeching |
+| *arr apps | Sonarr, Radarr, Lidarr, Prowlarr | Wanted, queued, indexers |
+| Other | Nextcloud, Portainer, Overseerr, NPM | Storage, endpoints, requests, host counts |
 
-Credentials are sent by the dashboard server to the configured service. They
-are not placed in the service tile link.
+**Custom API.** If your app isn't on the list, give it a JSON endpoint and
+map a few `Label=json.path` lines, optionally with an auth header. Paths
+use dots, so `storage.used` reads `{ "storage": { "used": 123 } }`.
 
-## Custom API services
+## If something looks off
 
-Custom API is the universal fallback for an app without a built-in integration.
-It reads JSON from any HTTP(S) endpoint and maps selected values into the
-expanded service tile.
-
-1. Add or edit a service and choose **Custom API** as its Service widget.
-2. Enter the API endpoint. Use a path such as `/api/status`, or enter a full
-   URL when the endpoint is hosted separately from the service URL.
-3. Optionally enter an authentication header and value, such as
-   `X-Api-Key` and the app's API key.
-4. Add one metric per line using `Label=JSON.path`, for example:
-
-   ```text
-   Users=users
-   Storage used=storage.used
-   Active jobs=jobs.active
-   ```
-
-5. Save the Services tab. The mapped values appear when the tile is expanded.
-
-The endpoint must return JSON. Nested object paths use dots; for example,
-`storage.used` reads `{ "storage": { "used": 123 } }`. Generic services remain
-available when no integration is selected.
-
-## Editing settings after setup
-
-Click the ⚙️ icon top-right at any time to:
-
-- Add, edit (name, **IP/port**, category), or remove services
-- Add services from the dashboard itself via **+ Add service** in the
-  Services section header (opens Settings on the Services tab)
-- Change your display name
-- Update your weather location
-- Add or remove RSS feeds
-- Connect, edit, or disable Pi-hole and AdGuard Home
-- Connect, edit, or disable Proxmox VE
-- Connect Nginx Proxy Manager (enter email + password for live stats)
-- Rearrange services by dragging tiles on the main page
-
-Changes are staged per tab and saved with the **Save** button at the top of
-Settings. Service metric and credential changes take effect immediately after
-saving; no restart is needed.
-
-## Manually editing config.json
-
-All settings persist to `./data/config.json` on the host (bind-mounted
-into the container). You can:
-
-- **Back it up** to preserve your setup across rebuilds
-- **Edit it directly** if you prefer — restart the container after
-  (`docker compose restart`)
-- **Delete it** to re-trigger the first-run wizard from scratch
+- **Tile says "offline" but the service is up.** Checks run on the server,
+  not your browser, so the server has to reach the URL. Remote services
+  are re-probed every 30 minutes, so a recovery can take a bit to show.
+  The dot and the text flip together.
+- **No icon.** It tried the icon set and the favicon lookup. Letter avatar
+  is the fallback; nothing is broken.
+- **Open Ports is empty.** Needs `network_mode: host`.
+- **Temperature shows `--`.** The host doesn't expose `/sys/class/thermal`.
+- **Disk usage looks wrong.** `HOST_DISK_PATH` defaults to `/hostfs`. Change
+  the mount and the variable together.
+- **No login screen.** Settings → Security. On narrow screens the tabs wrap
+  onto another row, so scroll down. Put HTTPS in front of this before
+  exposing it past the LAN.
+- **Proxmox panel is blank or hidden.** Check the token ID format
+  (`user@pam!tokenid`), the read-only role, and the ACL note above.
+- **Pi-hole / AdGuard widget stays hidden.** Check the URL from the
+  container and the credentials. AGH returning `403` usually means a
+  GL.iNet router — switch modes.
 
 ## Updating
 
-**With Docker (local build):**
 ```bash
 git pull
 docker compose up -d --build
 ```
 
-**Without Docker:**
-```bash
-git pull
-npm install
-npm start
-```
+`data/config.json` sits outside the image, so it survives updates.
 
-Either way, your `data/config.json` is untouched by updates since it
-lives outside the image, in the bind-mounted `./data` folder.
+## The tech bits
 
-## Troubleshooting
-
-**A service icon isn't showing / shows a plain letter instead of a logo**
-The app tries the [dashboard-icons](https://github.com/walkxcode/dashboard-icons)
-project first, then a favicon lookup on the service's domain, then falls
-back to a generated letter avatar. Uncommon or self-branded apps may not
-have a match in either source — this is expected, not a bug.
-
-**Open Ports table is empty**
-This panel needs `network_mode: host` (enabled by default — see
-[above](#host-networking-why-and-how-to-opt-out)). If you removed it for
-isolation, the panel will only show the container's own ports, which is
-usually empty.
-
-**CPU temperature shows `--`**
-Not all hosts expose thermal sensors the same way. Confirm
-`/sys/class/thermal` exists on your host and is populated
-(`cat /sys/class/thermal/thermal_zone0/temp`). Some virtual machines and
-certain SBCs simply don't expose this.
-
-**Disk usage looks wrong**
-`HOST_DISK_PATH` in `docker-compose.yml` defaults to `/hostfs`, which maps
-to your host's root filesystem via the `/:/hostfs:ro` mount. If you want
-to track a different mount (e.g. a separate data drive), bind-mount it to
-a new path in `docker-compose.yml` and update `HOST_DISK_PATH` to match.
-
-**Pi-hole stats won't connect**
-Double-check the URL is reachable from the dashboard container (no
-trailing slash) and that the API key is correct (Pi-hole admin →
-Settings → API / Web interface → Show API token). This uses the Pi-hole
-v5 legacy `/admin/api.php` API (`summary`, `topItems`, `topClients`,
-`topClientsBlocked`, `overTimeData10mins`); on Pi-hole v6 point the URL
-at a legacy-compatible endpoint if you have one enabled, otherwise the
-widget stays hidden until it can connect — it won't break the rest of the
-dashboard.
-
-**AdGuard Home stats won't connect**
-Make sure the URL is reachable from the dashboard container (no trailing
-slash) and that the username/password are the same ones you use to log in
-to AdGuard's admin UI. This uses the `/control` API with HTTP Basic auth —
-there's no API token. If you enabled two-factor or changed the admin
-account, use those exact credentials. If AdGuard keeps returning `403`, you
-may be hitting a **GL.iNet router** (which disables AGH credentials) —
-switch the auth mode drop-down to *GL.iNet router* and enter the router's
-admin credentials instead. The widget hides itself on any failure, so it
-won't break the rest of the dashboard.
-
-**A service tile always shows "offline" even though it's up**
-The status check runs from your browser, so it needs to be able to reach
-the service's URL/IP directly (same network). Services only reachable
-from the server itself, not your browsing device, will show as offline.
-
-**Proxmox panel is hidden**
-Check that the URL is reachable from the dashboard container (no trailing
-slash) and that you're using a token ID in the form `user@pam!tokenid`
-plus its secret. The panel uses the read-only **Audit** role. For a
-self-signed certificate, configure `TLS_CA_FILE` or explicitly set
-`ALLOW_INSECURE_TLS=true` for a trusted private network. Any connection
-failure just hides the panel — it won't affect the rest of the dashboard.
-
-**Dashboard login is not visible**
-Open ⚙️ **Settings** and choose the visible **Security** tab. On smaller
-screens, the Settings tabs wrap onto additional rows so every tab remains
-accessible without a horizontal scrollbar. Enable login protection, enter a username and a password of at
-least 8 characters, then click **Save**. Login protection is always enabled
-during setup wizard step 6 — it cannot be skipped. Use HTTPS through a
-reverse proxy before exposing the dashboard beyond your trusted LAN.
-
-**Proxmox panel shows zeros / no guests**
-On PVE 8.1+, a token only has the permissions explicitly granted to it (it
-no longer inherits its user's). Even a `root@pam` token returns an empty
-guest list until you add the token itself to an ACL: **Datacenter →
-Permissions → Add** → *API Token* → role **PVEAuditor** at path **/** with
-**Propagate** ticked. See [Proxmox VE guests](#proxmox-ve-guests).
-
-**Proxmox guest IP line shows "—"**
-LXC containers report their IPs automatically. QEMU VMs need the guest
-agent installed and running; without it PVE can't report VM IPs, so the
-dashboard shows "—". The disk/net/uptime lines still work either way.
-
-## Tech stack
-
-- **Backend**: Node.js + Express · [`systeminformation`](https://systeminformation.io/)
-  for host stats · [`rss-parser`](https://www.npmjs.com/package/rss-parser)
-  for feeds · [Open-Meteo](https://open-meteo.com/) for weather (no API
-  key required)
-- **Frontend**: plain HTML/CSS/JS — no build step, no framework — so the
-  image stays small and easy to modify
-- **Icons**: [dashboard-icons](https://github.com/walkxcode/dashboard-icons)
-  with a favicon and letter-avatar fallback chain
-
-## Project structure
-
-```
-homelab-dashboard/
-├── docker-compose.yml
-├── Dockerfile
-├── package.json
-├── server.js
-├── config/
-│   └── config.default.json
-├── data/
-└── public/
-    ├── index.html
-    ├── css/
-    │   └── style.css
-    └── js/
-        ├── catalog.js
-        └── app.js
-```
+Node.js and Express, `systeminformation` for host stats, `rss-parser` for
+feeds, Open-Meteo for weather (no key). Frontend is plain HTML, CSS and
+JavaScript — no build step, no framework, small image.
 
 ## License
 
-Released under the [MIT License](LICENSE).
+MIT. See [LICENSE](LICENSE).
