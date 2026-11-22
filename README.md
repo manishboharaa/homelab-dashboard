@@ -51,6 +51,9 @@ you start.
   three up. Pick which metrics to show in Settings.
 - **DNS blocking stats.** Queries, blocks, blocklist size, and a 24-hour
   graph for Pi-hole or AdGuard Home.
+- **Theme.** Dark by default. The ☀ / ☾ button in the top bar flips between
+  dark and a light linen, navy, and amber palette. Your choice sticks in
+  this browser.
 
 ## Run it
 
